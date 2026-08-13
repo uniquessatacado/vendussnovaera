@@ -31,6 +31,14 @@ yarn-error.log*
 .env*
 !.env.example
 
+# private files kept only on the local machine or server
+/secrets/*
+!/secrets/README.md
+shared.env
+*.key
+*.p12
+*.pfx
+
 # vercel
 .vercel
 
