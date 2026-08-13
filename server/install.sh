@@ -278,6 +278,36 @@ npm_http_get() {
   ' sh "${url}" "${host_header}" "${insecure}"
 }
 
+wait_for_npm_response() {
+  local url="$1"
+  local host_header="$2"
+  local expected="$3"
+  local response=""
+
+  for _ in $(seq 1 45); do
+    response="$(npm_http_get "${url}" "${host_header}" 2>/dev/null || true)"
+    if [[ "${response}" == "${expected}" ]]; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+wait_for_npm_success() {
+  local url="$1"
+  local host_header="$2"
+  local insecure="${3:-0}"
+
+  for _ in $(seq 1 45); do
+    if npm_http_get "${url}" "${host_header}" "${insecure}" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
 if [[ -n "${NPM_CONTAINER}" && "${NPM_NETWORK_MODE}" != "host" ]]; then
   log "Conectando somente a Nova Era Venduss à rede do proxy"
   start_docker_release "${RELEASE_DIR}"
@@ -316,6 +346,8 @@ prepare_certbot
 
 if [[ -n "${NPM_CONTAINER}" ]]; then
   log "Configurando o domínio ${DOMAIN}"
+  docker exec "${NPM_CONTAINER_NAME}" nginx -T 2>&1 | grep -F '/data/nginx/proxy_host/*.conf' >/dev/null || \
+    fail "A pasta de hosts do Nginx Proxy Manager não está ativa."
   NPM_PROXY_DIR_HOST="${NPM_DATA_HOST}/nginx/proxy_host"
   NPM_VHOST_HOST="${NPM_PROXY_DIR_HOST}/99998-venduss-nova-era.conf"
   NPM_ACME_HOST="${NPM_DATA_HOST}/vendussnovaera-acme"
@@ -347,12 +379,17 @@ server {
 EOF
   docker exec "${NPM_CONTAINER_NAME}" nginx -t
   docker exec "${NPM_CONTAINER_NAME}" nginx -s reload
+  docker exec "${NPM_CONTAINER_NAME}" nginx -T 2>&1 | grep -F "server_name ${DOMAIN};" >/dev/null || \
+    fail "O Nginx Proxy Manager não carregou a configuração da Nova Era Venduss."
 
   PREFLIGHT_TOKEN="vendussnovaera-${RELEASE_ID}"
   printf '%s\n' "${PREFLIGHT_TOKEN}" > "${NPM_ACME_HOST}/.well-known/acme-challenge/${PREFLIGHT_TOKEN}"
-  PREFLIGHT_RESPONSE="$(npm_http_get "http://127.0.0.1/.well-known/acme-challenge/${PREFLIGHT_TOKEN}" "${DOMAIN}" || true)"
+  PREFLIGHT_URL="http://127.0.0.1/.well-known/acme-challenge/${PREFLIGHT_TOKEN}"
+  if ! wait_for_npm_response "${PREFLIGHT_URL}" "${DOMAIN}" "${PREFLIGHT_TOKEN}"; then
+    rm -f -- "${NPM_ACME_HOST}/.well-known/acme-challenge/${PREFLIGHT_TOKEN}"
+    fail "O Nginx Proxy Manager não publicou a rota do domínio após 45 segundos."
+  fi
   rm -f -- "${NPM_ACME_HOST}/.well-known/acme-challenge/${PREFLIGHT_TOKEN}"
-  [[ "${PREFLIGHT_RESPONSE}" == "${PREFLIGHT_TOKEN}" ]] || fail "O domínio não chegou corretamente ao Nginx Proxy Manager."
 
   if [[ ! -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]]; then
     "${CERTBOT_BIN}" certonly --webroot --webroot-path "${NPM_ACME_HOST}" --domain "${DOMAIN}" \
@@ -375,8 +412,9 @@ server {
     location / { return 301 https://\$host\$request_uri; }
 }
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name ${DOMAIN};
     ssl_certificate /data/vendussnovaera-ssl/fullchain.pem;
     ssl_certificate_key /data/vendussnovaera-ssl/privkey.pem;
@@ -440,7 +478,8 @@ if [[ -n "${NPM_CONTAINER}" && "${NPM_NETWORK_MODE}" != "host" ]]; then
 else
   systemctl is-active --quiet "${APP_SERVICE}"
 fi
-npm_http_get "https://127.0.0.1/" "${DOMAIN}" 1 >/dev/null
+wait_for_npm_success "https://127.0.0.1/" "${DOMAIN}" 1 || \
+  fail "O HTTPS da Nova Era Venduss não respondeu após 45 segundos."
 
 SWITCHED_RELEASE="0"
 printf '\n\033[1;32mNova Era Venduss instalada com sucesso.\033[0m\n'
