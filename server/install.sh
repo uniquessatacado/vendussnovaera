@@ -262,10 +262,16 @@ npm_http_get() {
   local url="$1"
   local host_header="${2:-}"
   local insecure="${3:-0}"
+  local resolve_domain="${4:-}"
   docker exec "${NPM_CONTAINER_NAME}" sh -c '
-    url="$1"; host_header="$2"; insecure="$3"
+    url="$1"; host_header="$2"; insecure="$3"; resolve_domain="$4"
     if command -v curl >/dev/null 2>&1; then
       tls=""; [ "${insecure}" = "1" ] && tls="-k"
+      if [ -n "${resolve_domain}" ]; then
+        exec curl ${tls} -fsS --max-time 15 \
+          --resolve "${resolve_domain}:443:127.0.0.1" \
+          -H "Host: ${host_header}" "${url}"
+      fi
       if [ -n "${host_header}" ]; then exec curl ${tls} -fsS --max-time 15 -H "Host: ${host_header}" "${url}"; fi
       exec curl ${tls} -fsS --max-time 15 "${url}"
     fi
@@ -275,7 +281,7 @@ npm_http_get() {
       exec wget -qO- ${tls} --timeout=15 "${url}"
     fi
     exit 127
-  ' sh "${url}" "${host_header}" "${insecure}"
+  ' sh "${url}" "${host_header}" "${insecure}" "${resolve_domain}"
 }
 
 wait_for_npm_response() {
@@ -298,9 +304,10 @@ wait_for_npm_success() {
   local url="$1"
   local host_header="$2"
   local insecure="${3:-0}"
+  local resolve_domain="${4:-}"
 
   for _ in $(seq 1 45); do
-    if npm_http_get "${url}" "${host_header}" "${insecure}" >/dev/null 2>&1; then
+    if npm_http_get "${url}" "${host_header}" "${insecure}" "${resolve_domain}" >/dev/null 2>&1; then
       return 0
     fi
     sleep 1
@@ -497,7 +504,7 @@ if [[ -n "${NPM_CONTAINER}" && "${NPM_NETWORK_MODE}" != "host" ]]; then
 else
   systemctl is-active --quiet "${APP_SERVICE}"
 fi
-wait_for_npm_success "https://127.0.0.1/" "${DOMAIN}" 1 || \
+wait_for_npm_success "https://${DOMAIN}/" "${DOMAIN}" 1 "${DOMAIN}" || \
   fail "O HTTPS da Nova Era Venduss não respondeu após 45 segundos."
 
 SWITCHED_RELEASE="0"
