@@ -45,10 +45,16 @@ npm_http_get() {
   local url="$1"
   local host_header="${2:-}"
   local insecure="${3:-0}"
+  local resolve_domain="${4:-}"
   docker exec "${NPM_CONTAINER_NAME}" sh -c '
-    url="$1"; host_header="$2"; insecure="$3"
+    url="$1"; host_header="$2"; insecure="$3"; resolve_domain="$4"
     if command -v curl >/dev/null 2>&1; then
       tls=""; [ "${insecure}" = "1" ] && tls="-k"
+      if [ -n "${resolve_domain}" ]; then
+        exec curl ${tls} -fsS --max-time 15 \
+          --resolve "${resolve_domain}:443:127.0.0.1" \
+          -H "Host: ${host_header}" "${url}"
+      fi
       if [ -n "${host_header}" ]; then exec curl ${tls} -fsS --max-time 15 -H "Host: ${host_header}" "${url}"; fi
       exec curl ${tls} -fsS --max-time 15 "${url}"
     fi
@@ -58,7 +64,7 @@ npm_http_get() {
       exec wget -qO- ${tls} --timeout=15 "${url}"
     fi
     exit 127
-  ' sh "${url}" "${host_header}" "${insecure}"
+  ' sh "${url}" "${host_header}" "${insecure}" "${resolve_domain}"
 }
 
 wait_for_content() {
@@ -248,10 +254,10 @@ systemctl daemon-reload
 systemctl enable --now vendussnovaera-certbot-renew.timer
 
 for _ in $(seq 1 45); do
-  npm_http_get "https://127.0.0.1/" "${DOMAIN}" 1 >/dev/null 2>&1 && break
+  npm_http_get "https://${DOMAIN}/" "${DOMAIN}" 1 "${DOMAIN}" >/dev/null 2>&1 && break
   sleep 1
 done
-npm_http_get "https://127.0.0.1/" "${DOMAIN}" 1 >/dev/null || fail "O HTTPS foi criado, mas o site ainda não respondeu."
+npm_http_get "https://${DOMAIN}/" "${DOMAIN}" 1 "${DOMAIN}" >/dev/null || fail "O HTTPS foi criado, mas o site ainda não respondeu."
 
 printf '\n\033[1;32mNova Era Venduss concluída com sucesso.\033[0m\n'
 printf 'Site: https://%s\n' "${DOMAIN}"
