@@ -460,4 +460,5 @@ npm_http_get "https://127.0.0.1/" "${DOMAIN}" 1 >/dev/null
 SWITCHED_RELEASE="0"
 printf '\n\033[1;32mNova Era Venduss instalada com sucesso.\033[0m\n'
 printf 'Site: https://%s\n' "${DOMAIN}"
+printf 'Supabase Auth: adicione https://%s/** nos endereços de redirecionamento permitidos.\n' "${DOMAIN}"
 printf 'Os demais sistemas e containers não foram alterados.\n'
