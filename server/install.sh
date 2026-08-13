@@ -125,23 +125,8 @@ if [[ -L "${APP_ROOT}/current" ]]; then
   PREVIOUS_RELEASE="$(readlink -f "${APP_ROOT}/current" || true)"
 fi
 
-read_existing_env() {
-  local env_file="${APP_ROOT}/shared.env"
-  [[ -f "${env_file}" ]] || return 1
-  SUPABASE_URL="$(sed -n 's/^NEXT_PUBLIC_SUPABASE_URL=//p' "${env_file}" | tail -n 1)"
-  SUPABASE_KEY="$(sed -n 's/^NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=//p' "${env_file}" | tail -n 1)"
-  [[ -n "${SUPABASE_URL}" && -n "${SUPABASE_KEY}" ]]
-}
-
-if ! read_existing_env; then
-  DEFAULT_SUPABASE_URL="https://kedggjyerexnzmipaick.supabase.co"
-  printf '\nURL do Supabase [%s]: ' "${DEFAULT_SUPABASE_URL}"
-  read -r SUPABASE_URL
-  SUPABASE_URL="${SUPABASE_URL:-${DEFAULT_SUPABASE_URL}}"
-  printf 'Cole a Publishable Key do Supabase (começa com sb_publishable_): '
-  read -r -s SUPABASE_KEY
-  printf '\n'
-fi
+SUPABASE_URL="https://kedggjyerexnzmipaick.supabase.co"
+SUPABASE_KEY="sb_publishable_WoobBV7n0p5Jf-4DLJVzIA_4sUoAvsT"
 
 [[ "${SUPABASE_URL}" == https://*.supabase.co ]] || fail "A URL do Supabase é inválida."
 [[ "${SUPABASE_KEY}" == sb_publishable_* ]] || fail "A Publishable Key do Supabase é inválida."
