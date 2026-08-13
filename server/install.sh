@@ -344,6 +344,26 @@ prepare_certbot() {
 CERTBOT_BIN=""
 prepare_certbot
 
+issue_certificate() {
+  local attempt
+  local wait_seconds
+
+  for attempt in 1 2 3; do
+    log "Solicitando o certificado HTTPS (tentativa ${attempt}/3)"
+    if "${CERTBOT_BIN}" certonly --webroot --webroot-path "${NPM_ACME_HOST}" --domain "${DOMAIN}" \
+      --non-interactive --agree-tos --register-unsafely-without-email --preferred-challenges http; then
+      return 0
+    fi
+
+    if [[ "${attempt}" -lt 3 ]]; then
+      wait_seconds="$((attempt * 15))"
+      log "O Let’s Encrypt não respondeu. Tentando novamente em ${wait_seconds} segundos"
+      sleep "${wait_seconds}"
+    fi
+  done
+  return 1
+}
+
 if [[ -n "${NPM_CONTAINER}" ]]; then
   log "Configurando o domínio ${DOMAIN}"
   docker exec "${NPM_CONTAINER_NAME}" nginx -T 2>&1 | grep -F '/data/nginx/proxy_host/*.conf' >/dev/null || \
@@ -392,8 +412,7 @@ EOF
   rm -f -- "${NPM_ACME_HOST}/.well-known/acme-challenge/${PREFLIGHT_TOKEN}"
 
   if [[ ! -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]]; then
-    "${CERTBOT_BIN}" certonly --webroot --webroot-path "${NPM_ACME_HOST}" --domain "${DOMAIN}" \
-      --non-interactive --agree-tos --register-unsafely-without-email --preferred-challenges http
+    issue_certificate || fail "O Let’s Encrypt não respondeu após três tentativas."
   fi
   [[ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]] || fail "O certificado HTTPS não foi criado."
   install -m 0644 "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" "${NPM_SSL_HOST}/fullchain.pem"
