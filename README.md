@@ -43,3 +43,17 @@ npm test
 ```
 
 O cliente web usa apenas a chave publicável do Supabase. Nunca inclua uma chave `service_role` no navegador.
+
+## Instalação no servidor
+
+O instalador para Ubuntu 22.04 e Nginx Proxy Manager usa o domínio `vendussnovaera.venduss.com`, uma porta e um container exclusivos e não reinicia os outros sistemas do servidor.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/uniquessatacado/vendussnovaera/main/server/install.sh -o /tmp/vendussnovaera-install.sh && sudo bash /tmp/vendussnovaera-install.sh
+```
+
+Atualizações posteriores:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/uniquessatacado/vendussnovaera/main/server/update.sh -o /tmp/vendussnovaera-update.sh && sudo bash /tmp/vendussnovaera-update.sh
+```
