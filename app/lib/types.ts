@@ -2,6 +2,8 @@ export type UserRole = "admin" | "agent";
 export type CaseStatus = "open" | "in_progress" | "waiting_customer" | "resolved" | "cancelled";
 export type ReviewStatus = "draft" | "pending" | "approved" | "changes_requested";
 export type Priority = "low" | "normal" | "high" | "urgent";
+export type CustomerMood = "very_upset" | "upset" | "normal" | "calm";
+export type WorkflowStage = "in_service" | "awaiting_internal_action" | "options_released" | "waiting_customer" | "completed" | "renegotiating";
 export type ResolutionType =
   | "store_credit"
   | "store_credit_venduss"
@@ -67,6 +69,17 @@ export type NevCase = {
   review_decided_by: string | null;
   review_note: string | null;
   current_action_user: string | null;
+  workflow_stage: WorkflowStage;
+  customer_mood: CustomerMood;
+  mood_updated_at: string;
+  mood_updated_by: string | null;
+  problem_started_at: string;
+  available_resolutions: ResolutionType[];
+  options_released_at: string | null;
+  options_released_by: string | null;
+  customer_waiting_since: string | null;
+  last_customer_contact_at: string | null;
+  pix_key: string | null;
   resolution_type: ResolutionType | null;
   resolution_amount: number | null;
   resolution_notes: string | null;
@@ -81,7 +94,7 @@ export type CaseUpdate = {
   case_id: string;
   author_id: string | null;
   recipient_id: string | null;
-  kind: "note" | "status" | "resolution" | "payment" | "attachment" | "approval" | "assignment" | "renegotiation";
+  kind: "note" | "status" | "resolution" | "payment" | "attachment" | "approval" | "assignment" | "renegotiation" | "mood" | "customer_contact";
   body: string;
   metadata: Record<string, unknown>;
   read_at: string | null;
@@ -123,6 +136,7 @@ export type RefundInstallment = {
   paid_at: string | null;
   notes: string | null;
   postponed_reason: string | null;
+  pix_key?: string | null;
 };
 
 export type RefundPlan = {
@@ -132,6 +146,7 @@ export type RefundPlan = {
   installment_count: number;
   first_due_date: string;
   status: "open" | "paid" | "cancelled";
+  pix_key: string | null;
   created_at: string;
   nev_cases: Pick<NevCase, "id" | "case_number" | "customer_name" | "whatsapp"> | null;
   nev_refund_installments: RefundInstallment[];
@@ -148,6 +163,7 @@ export type NevTask = {
   assigned_to: string;
   waiting_on: string | null;
   due_at: string | null;
+  remind_at: string | null;
   snoozed_until: string | null;
   snooze_reason: string | null;
   completed_at: string | null;
