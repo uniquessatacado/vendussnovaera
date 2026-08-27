@@ -1,129 +1,91 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
-  AlertTriangle,
-  ArrowLeft,
-  CalendarClock,
-  CalendarDays,
-  Check,
-  CheckCircle2,
-  ChevronRight,
-  Circle,
-  CircleDollarSign,
-  ClipboardList,
-  Clock3,
-  Eye,
-  EyeOff,
-  FileText,
-  HandCoins,
-  Headphones,
-  LayoutDashboard,
-  Loader2,
-  LockKeyhole,
-  LogOut,
-  Mail,
-  MessageCircle,
-  Plus,
-  ReceiptText,
-  RefreshCw,
-  Search,
-  Send,
-  ShieldCheck,
-  Sparkles,
-  UserCheck,
-  UsersRound,
-  UserX,
-  WalletCards,
-  X,
+  AlertTriangle, BellRing, CalendarClock, CalendarDays, Check,
+  CheckCircle2, ChevronRight, CircleDollarSign, ClipboardCheck, ClipboardList, Clock3,
+  Eye, EyeOff, FileImage, HandCoins, Headphones, History, LayoutDashboard,
+  Loader2, LockKeyhole, LogOut, Mail, MessageCircle, Paperclip, PauseCircle, Plus,
+  RefreshCw, Search, Send, ShieldCheck, Sparkles, UserCheck, UsersRound, UserX,
+  WalletCards, X,
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
-import {
-  caseCode,
-  formatDate,
-  formatDateTime,
-  money,
-  normalizeWhatsapp,
-  whatsappUrl,
-} from "./lib/format";
+import { caseCode, formatDate, formatDateTime, money, normalizeWhatsapp, whatsappUrl } from "./lib/format";
 import type {
-  CaseStatus,
-  CaseUpdate,
-  NevCase,
-  Priority,
-  Profile,
-  RefundInstallment,
-  RefundPlan,
-  ResolutionType,
-  UserRole,
+  AuditEvent, CaseAttachment, CaseStatus, CaseUpdate, NevCase, NevCustomer, NevTask,
+  Priority, Profile, RefundInstallment, RefundPlan, ResolutionType, ReviewStatus,
+  TaskUpdate, UserRole,
 } from "./lib/types";
 
-type Tab = "dashboard" | "cases" | "refunds" | "team";
+type Tab = "dashboard" | "action" | "cases" | "tasks" | "refunds" | "audit" | "team";
 
 const statusLabels: Record<CaseStatus, string> = {
-  open: "Novo",
-  in_progress: "Em atendimento",
-  waiting_customer: "Aguardando cliente",
-  resolved: "Resolvido",
-  cancelled: "Cancelado",
+  open: "Novo", in_progress: "Em atendimento", waiting_customer: "Aguardando cliente",
+  resolved: "Resolvido", cancelled: "Cancelado",
 };
-
-const priorityLabels: Record<Priority, string> = {
-  low: "Baixa",
-  normal: "Normal",
-  high: "Alta",
-  urgent: "Urgente",
+const reviewLabels: Record<ReviewStatus, string> = {
+  draft: "Preparando conferência", pending: "Aguardando conferência",
+  approved: "Conferido e liberado", changes_requested: "Ajustes solicitados",
 };
-
+const priorityLabels: Record<Priority, string> = { low: "Baixa", normal: "Normal", high: "Alta", urgent: "Urgente" };
 const issueLabels: Record<string, string> = {
-  thai_order: "Pedido tailandês",
-  missing_item: "Produto não recebido",
-  wrong_item: "Produto incorreto",
-  quality: "Problema de qualidade",
-  refund: "Solicitação de reembolso",
-  other: "Outro",
+  thai_order: "Pedido tailandês", missing_item: "Produto não recebido", wrong_item: "Produto incorreto",
+  quality: "Problema de qualidade", refund: "Solicitação de reembolso", other: "Outro",
 };
-
 const resolutionLabels: Record<ResolutionType, string> = {
-  store_credit: "Crédito em produtos",
-  reorder: "Refazer o pedido",
-  installment_refund: "Reembolso parcelado",
-  other: "Outra solução",
+  store_credit: "Crédito em produtos", store_credit_venduss: "Crédito para pedido na Venduss",
+  store_credit_zero19: "Crédito para pedido na Zero19", reorder: "Refazer pedido",
+  installment_refund: "Reembolso parcelado", other: "Outra solução",
+};
+const attachmentLabels: Record<CaseAttachment["category"], string> = {
+  payment_receipt: "Comprovante de pagamento", shipping: "Envio da mercadoria",
+  problem: "Imagem do problema", other: "Outro anexo",
 };
 
-const navItems: Array<{ id: Tab; label: string; icon: typeof LayoutDashboard }> = [
-  { id: "dashboard", label: "Visão geral", icon: LayoutDashboard },
-  { id: "cases", label: "Atendimentos", icon: Headphones },
-  { id: "refunds", label: "Reembolsos", icon: HandCoins },
-  { id: "team", label: "Equipe", icon: UsersRound },
-];
+function personName(profiles: Profile[], id: string | null) {
+  const person = profiles.find((item) => item.user_id === id);
+  return person?.full_name || person?.email || "Usuário";
+}
 
 function Brand({ inverse = false }: { inverse?: boolean }) {
-  return (
-    <div className={`brand ${inverse ? "brand--inverse" : ""}`}>
-      <span className="brand__mark" aria-hidden="true">
-        <Sparkles size={20} strokeWidth={2.2} />
-      </span>
-      <span className="brand__text">
-        <strong>Nova Era</strong>
-        <small>VENDUSS</small>
-      </span>
-    </div>
-  );
+  return <div className={`brand ${inverse ? "brand--inverse" : ""}`}><span className="brand__mark"><Sparkles size={20} /></span><span className="brand__text"><strong>Nova Era</strong><small>VENDUSS</small></span></div>;
+}
+
+function useModalLock() {
+  useEffect(() => {
+    const scrollY = window.scrollY;
+    const body = document.body;
+    const html = document.documentElement;
+    html.classList.add("modal-open");
+    body.classList.add("modal-open");
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.width = "100%";
+    return () => {
+      html.classList.remove("modal-open");
+      body.classList.remove("modal-open");
+      body.style.position = "";
+      body.style.top = "";
+      body.style.width = "";
+      window.scrollTo(0, scrollY);
+    };
+  }, []);
+}
+
+function Modal({ title, eyebrow, onClose, children, wide = false }: { title: string; eyebrow?: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
+  useModalLock();
+  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    <section className={`modal ${wide ? "modal--details" : "modal--form"}`} role="dialog" aria-modal="true" aria-label={title}>
+      <header className="modal__header"><div>{eyebrow && <span className="eyebrow">{eyebrow}</span>}<h2>{title}</h2></div><button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={20} /></button></header>
+      {children}
+    </section>
+  </div>;
 }
 
 function CenteredLoader({ label = "Carregando..." }: { label?: string }) {
-  return (
-    <main className="centered-screen">
-      <Brand />
-      <div className="loader-line">
-        <Loader2 className="spin" size={20} />
-        <span>{label}</span>
-      </div>
-    </main>
-  );
+  return <main className="centered-screen"><Brand /><div className="loader-line"><Loader2 className="spin" size={20} />{label}</div></main>;
 }
 
 function AuthScreen() {
@@ -136,1055 +98,252 @@ function AuthScreen() {
   const [message, setMessage] = useState<{ kind: "error" | "success"; text: string } | null>(null);
 
   async function submit(event: FormEvent) {
-    event.preventDefault();
-    setBusy(true);
-    setMessage(null);
-
+    event.preventDefault(); setBusy(true); setMessage(null);
     if (mode === "login") {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) {
-        setMessage({
-          kind: "error",
-          text: error.message.toLowerCase().includes("invalid login")
-            ? "E-mail ou senha incorretos."
-            : error.message,
-        });
-      }
+      if (error) setMessage({ kind: "error", text: error.message.toLowerCase().includes("invalid login") ? "E-mail ou senha incorretos." : error.message });
     } else {
-      if (fullName.trim().length < 2) {
-        setMessage({ kind: "error", text: "Informe seu nome completo." });
-        setBusy(false);
-        return;
-      }
-      if (password.length < 6) {
-        setMessage({ kind: "error", text: "A senha precisa ter pelo menos 6 caracteres." });
-        setBusy(false);
-        return;
-      }
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { full_name: fullName.trim() },
-          emailRedirectTo: window.location.origin,
-        },
-      });
-      if (error) {
-        setMessage({ kind: "error", text: error.message });
-      } else if (!data.session) {
-        setMessage({
-          kind: "success",
-          text: "Cadastro recebido. Confirme o e-mail e depois entre com sua senha.",
-        });
-      }
+      const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName.trim() }, emailRedirectTo: window.location.origin } });
+      if (error) setMessage({ kind: "error", text: error.message });
+      else if (!data.session) setMessage({ kind: "success", text: "Cadastro recebido. Confirme o e-mail e aguarde a aprovação." });
     }
     setBusy(false);
   }
 
-  return (
-    <main className="auth-page">
-      <section className="auth-story">
-        <div>
-          <Brand inverse />
-          <div className="auth-story__copy">
-            <span className="eyebrow eyebrow--light">CENTRAL DE PENDÊNCIAS</span>
-            <h1>Cada cliente acompanhado até a solução.</h1>
-            <p>
-              Organize atendimentos, acordos e reembolsos em um único lugar — com histórico claro para toda a equipe.
-            </p>
-          </div>
-        </div>
-        <div className="auth-proof">
-          <span className="auth-proof__icon"><ShieldCheck size={20} /></span>
-          <div>
-            <strong>Dados protegidos</strong>
-            <small>Acesso individual e permissões por atendente.</small>
-          </div>
-        </div>
-      </section>
-
-      <section className="auth-panel">
-        <div className="auth-card">
-          <div className="auth-card__mobile-brand"><Brand /></div>
-          <div className="auth-card__heading">
-            <span className="eyebrow">ÁREA DA EQUIPE</span>
-            <h2>{mode === "login" ? "Que bom ter você de volta" : "Crie seu acesso"}</h2>
-            <p>
-              {mode === "login"
-                ? "Entre para continuar os atendimentos."
-                : "O administrador aprova novos atendentes após o cadastro."}
-            </p>
-          </div>
-
-          <form onSubmit={submit} className="form-stack">
-            {mode === "signup" && (
-              <label className="field">
-                <span>Nome completo</span>
-                <div className="input-wrap">
-                  <UsersRound size={18} />
-                  <input
-                    autoComplete="name"
-                    value={fullName}
-                    onChange={(event) => setFullName(event.target.value)}
-                    placeholder="Seu nome"
-                    required
-                  />
-                </div>
-              </label>
-            )}
-            <label className="field">
-              <span>E-mail</span>
-              <div className="input-wrap">
-                <Mail size={18} />
-                <input
-                  type="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="voce@novaera.com"
-                  required
-                />
-              </div>
-            </label>
-            <label className="field">
-              <span>Senha</span>
-              <div className="input-wrap">
-                <LockKeyhole size={18} />
-                <input
-                  type={showPassword ? "text" : "password"}
-                  autoComplete={mode === "login" ? "current-password" : "new-password"}
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder="••••••••"
-                  required
-                />
-                <button
-                  className="icon-button icon-button--inside"
-                  type="button"
-                  onClick={() => setShowPassword((current) => !current)}
-                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
-                >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-            </label>
-
-            {message && <div className={`form-message form-message--${message.kind}`}>{message.text}</div>}
-
-            <button className="button button--primary button--full" type="submit" disabled={busy}>
-              {busy ? <Loader2 className="spin" size={18} /> : null}
-              {mode === "login" ? "Entrar no sistema" : "Criar meu acesso"}
-            </button>
-          </form>
-
-          <button
-            className="auth-switch"
-            type="button"
-            onClick={() => {
-              setMode((current) => (current === "login" ? "signup" : "login"));
-              setMessage(null);
-            }}
-          >
-            {mode === "login" ? "Primeiro acesso? Cadastre-se" : "Já possui acesso? Entrar"}
-          </button>
-        </div>
-      </section>
-    </main>
-  );
+  return <main className="auth-page">
+    <section className="auth-story"><div><Brand inverse /><div className="auth-story__copy"><span className="eyebrow eyebrow--light">CENTRAL OPERACIONAL</span><h1>Cada pendência com dono, prazo e solução.</h1><p>Atendimentos, conferências, anexos, tarefas e reembolsos em um fluxo claro para toda a equipe.</p></div></div><div className="auth-proof"><span className="auth-proof__icon"><ShieldCheck size={20} /></span><div><strong>Dados protegidos</strong><small>Anexos privados e permissões por usuário.</small></div></div></section>
+    <section className="auth-panel"><div className="auth-card"><div className="auth-card__mobile-brand"><Brand /></div><div className="auth-card__heading"><span className="eyebrow">ÁREA DA EQUIPE</span><h2>{mode === "login" ? "Entre no sistema" : "Crie seu acesso"}</h2><p>{mode === "login" ? "Continue de onde a equipe parou." : "O administrador aprova o acesso após o cadastro."}</p></div>
+      <form onSubmit={submit} className="form-stack">
+        {mode === "signup" && <label className="field"><span>Nome completo</span><div className="input-wrap"><UsersRound size={18} /><input autoComplete="name" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Seu nome" required /></div></label>}
+        <label className="field"><span>E-mail</span><div className="input-wrap"><Mail size={18} /><input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="voce@email.com" required /></div></label>
+        <label className="field"><span>Senha</span><div className="input-wrap"><LockKeyhole size={18} /><input type={showPassword ? "text" : "password"} autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mínimo de 6 caracteres" minLength={6} required /><button className="icon-button icon-button--inside" type="button" onClick={() => setShowPassword(!showPassword)} aria-label="Mostrar senha">{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div></label>
+        {message && <div className={`form-message form-message--${message.kind}`}>{message.text}</div>}
+        <button className="button button--primary button--full" disabled={busy}>{busy && <Loader2 className="spin" size={18} />}{mode === "login" ? "Entrar" : "Criar acesso"}</button>
+      </form>
+      <button className="auth-switch" onClick={() => { setMode(mode === "login" ? "signup" : "login"); setMessage(null); }}>{mode === "login" ? "Primeiro acesso? Cadastre-se" : "Já possui acesso? Entrar"}</button>
+    </div></section>
+  </main>;
 }
 
-function AccessSetup({
-  userId,
-  onReady,
-  onSignOut,
-}: {
-  userId: string;
-  onReady: (profile: Profile) => void;
-  onSignOut: () => void;
-}) {
-  const [token, setToken] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+function AccessState({ profile, bootstrap, onReload, onSignOut }: { profile?: Profile | null; bootstrap?: boolean; onReload: () => void; onSignOut: () => void }) {
+  const [token, setToken] = useState(""); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
+  async function activate(event: FormEvent) {
+    event.preventDefault(); setBusy(true); setError("");
+    const { error: claimError } = await supabase.rpc("nev_claim_access", { p_bootstrap_token: token.trim() });
+    if (claimError) setError(claimError.message); else onReload(); setBusy(false);
+  }
+  return <main className="centered-screen setup-screen"><Brand /><section className="setup-card"><span className={`setup-card__icon ${bootstrap ? "" : "setup-card__icon--amber"}`}>{bootstrap ? <ShieldCheck size={24} /> : <Clock3 size={24} />}</span><span className="eyebrow">{bootstrap ? "CONFIGURAÇÃO INICIAL" : "ACESSO EM ANÁLISE"}</span><h1>{bootstrap ? "Ative o administrador" : "Cadastro recebido"}</h1><p>{bootstrap ? "Digite a chave inicial entregue com o sistema." : `Olá, ${profile?.full_name?.split(" ")[0] || "atendente"}. Um administrador precisa liberar seu acesso.`}</p>
+    {bootstrap ? <form className="form-stack" onSubmit={activate}><label className="field"><span>Chave inicial</span><input value={token} onChange={(e) => setToken(e.target.value)} required /></label>{error && <div className="form-message form-message--error">{error}</div>}<button className="button button--primary button--full" disabled={busy}>{busy && <Loader2 className="spin" size={17} />}Ativar</button></form> : <button className="button button--primary button--full" onClick={onReload}><RefreshCw size={17} /> Verificar aprovação</button>}
+    <button className="text-button" onClick={onSignOut}>Sair e usar outra conta</button></section></main>;
+}
+
+function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: string }) { return <span className={`soft-badge soft-badge--${tone}`}>{children}</span>; }
+function StatusBadge({ status }: { status: CaseStatus }) { return <span className={`badge badge--${status}`}>{statusLabels[status]}</span>; }
+function PriorityBadge({ priority }: { priority: Priority }) { return <span className={`priority priority--${priority}`}><i />{priorityLabels[priority]}</span>; }
+function EmptyState({ icon, title, text }: { icon: ReactNode; title: string; text: string }) { return <div className="empty-state"><span>{icon}</span><strong>{title}</strong><p>{text}</p></div>; }
+function StatCard({ label, value, detail, icon, tone }: { label: string; value: string | number; detail: string; icon: ReactNode; tone: string }) { return <article className="stat-card"><div className={`stat-card__icon stat-card__icon--${tone}`}>{icon}</div><div className="stat-card__content"><span>{label}</span><strong>{value}</strong><small>{detail}</small></div></article>; }
+
+async function uploadCaseFiles(caseId: string, files: File[], category: CaseAttachment["category"], profile: Profile) {
+  for (const file of files) {
+    if (file.size > 10 * 1024 * 1024) throw new Error(`${file.name}: limite de 10 MB.`);
+    const safeName = file.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9._-]/g, "-");
+    const path = `${caseId}/${crypto.randomUUID()}-${safeName}`;
+    const { error: uploadError } = await supabase.storage.from("nev-case-files").upload(path, file, { contentType: file.type, upsert: false });
+    if (uploadError) throw uploadError;
+    const { error: rowError } = await supabase.from("nev_case_attachments").insert({ case_id: caseId, uploaded_by: profile.user_id, category, storage_path: path, original_name: file.name, mime_type: file.type || "image/jpeg", size_bytes: file.size });
+    if (rowError) { await supabase.storage.from("nev-case-files").remove([path]); throw rowError; }
+    await supabase.from("nev_case_updates").insert({ case_id: caseId, author_id: profile.user_id, kind: "attachment", body: `${attachmentLabels[category]} anexado: ${file.name}` });
+  }
+}
+
+function NewCaseModal({ profile, profiles, customers, onClose, onCreated }: { profile: Profile; profiles: Profile[]; customers: NevCustomer[]; onClose: () => void; onCreated: () => void }) {
+  const [name, setName] = useState(""); const [phone, setPhone] = useState(""); const [value, setValue] = useState("");
+  const [issue, setIssue] = useState("other"); const [priority, setPriority] = useState<Priority>("normal"); const [description, setDescription] = useState("");
+  const [reviewer, setReviewer] = useState(""); const [reviewNote, setReviewNote] = useState(""); const [files, setFiles] = useState<File[]>([]);
+  const [category, setCategory] = useState<CaseAttachment["category"]>("problem"); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
+  const normalized = normalizeWhatsapp(phone);
+  const duplicate = normalized.length >= 10 ? customers.find((customer) => customer.normalized_whatsapp === normalized) : undefined;
+  const reviewers = profiles.filter((person) => person.active && person.user_id !== profile.user_id);
 
   async function submit(event: FormEvent) {
-    event.preventDefault();
-    setBusy(true);
-    setError("");
-    const { error: claimError } = await supabase.rpc("nev_claim_access", {
-      p_bootstrap_token: token.trim(),
-    });
-    if (claimError) {
-      setError(claimError.message.includes("Chave inicial") ? "A chave informada não confere." : claimError.message);
-      setBusy(false);
-      return;
-    }
-    const { data, error: profileError } = await supabase
-      .from("nev_profiles")
-      .select("*")
-      .eq("user_id", userId)
-      .single();
-    if (profileError) setError(profileError.message);
-    else onReady(data as Profile);
+    event.preventDefault(); setBusy(true); setError("");
+    const amount = Number(value.replace(",", "."));
+    const { data, error: createError } = await supabase.rpc("nev_create_case", { p_customer_name: name.trim(), p_whatsapp: normalized, p_order_value: amount, p_issue_type: issue, p_description: description.trim(), p_priority: priority, p_assigned_to: profile.user_id });
+    const created = Array.isArray(data) ? data[0] : data;
+    if (createError || !created) { setError(createError?.message || "Não foi possível criar o atendimento."); setBusy(false); return; }
+    try {
+      if (files.length) await uploadCaseFiles(created.id, files, category, profile);
+      if (reviewer) {
+        const { error: reviewError } = await supabase.rpc("nev_request_case_review", { p_case_id: created.id, p_reviewer_id: reviewer, p_note: reviewNote.trim() || null });
+        if (reviewError) throw reviewError;
+      }
+      onCreated();
+    } catch (uploadError) { setError(uploadError instanceof Error ? uploadError.message : "Falha ao anexar arquivos."); }
     setBusy(false);
   }
 
-  return (
-    <main className="centered-screen setup-screen">
-      <Brand />
-      <section className="setup-card">
-        <span className="setup-card__icon"><ShieldCheck size={24} /></span>
-        <span className="eyebrow">CONFIGURAÇÃO INICIAL</span>
-        <h1>Ative o primeiro administrador</h1>
-        <p>Digite a chave inicial entregue com o sistema. Ela será usada uma única vez.</p>
-        <form className="form-stack" onSubmit={submit}>
-          <label className="field">
-            <span>Chave inicial</span>
-            <div className="input-wrap">
-              <LockKeyhole size={18} />
-              <input value={token} onChange={(event) => setToken(event.target.value)} required autoFocus />
-            </div>
-          </label>
-          {error && <div className="form-message form-message--error">{error}</div>}
-          <button className="button button--primary button--full" disabled={busy}>
-            {busy && <Loader2 className="spin" size={18} />}
-            {busy ? "Ativando..." : "Ativar administração"}
-          </button>
-        </form>
-        <button className="text-button" type="button" onClick={onSignOut}>Sair e usar outra conta</button>
-      </section>
-    </main>
-  );
-}
-
-function PendingAccess({ profile, onReload, onSignOut }: { profile: Profile; onReload: () => void; onSignOut: () => void }) {
-  return (
-    <main className="centered-screen setup-screen">
-      <Brand />
-      <section className="setup-card">
-        <span className="setup-card__icon setup-card__icon--amber"><Clock3 size={24} /></span>
-        <span className="eyebrow">ACESSO EM ANÁLISE</span>
-        <h1>Cadastro recebido</h1>
-        <p>
-          Olá, {profile.full_name?.split(" ")[0] || "atendente"}. Um administrador precisa liberar seu acesso.
-        </p>
-        <div className="pending-email"><Mail size={17} /> {profile.email}</div>
-        <button className="button button--primary button--full" onClick={onReload}>
-          <RefreshCw size={17} /> Verificar aprovação
-        </button>
-        <button className="text-button" type="button" onClick={onSignOut}>Sair e usar outra conta</button>
-      </section>
-    </main>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  detail,
-  icon,
-  tone,
-}: {
-  label: string;
-  value: string | number;
-  detail: string;
-  icon: ReactNode;
-  tone: "green" | "blue" | "amber" | "violet";
-}) {
-  return (
-    <article className="stat-card">
-      <div className={`stat-card__icon stat-card__icon--${tone}`}>{icon}</div>
-      <div className="stat-card__content">
-        <span>{label}</span>
-        <strong>{value}</strong>
-        <small>{detail}</small>
-      </div>
-    </article>
-  );
-}
-
-function StatusBadge({ status }: { status: CaseStatus }) {
-  return <span className={`badge badge--${status}`}>{statusLabels[status]}</span>;
-}
-
-function PriorityBadge({ priority }: { priority: Priority }) {
-  return <span className={`priority priority--${priority}`}><i />{priorityLabels[priority]}</span>;
-}
-
-function EmptyState({ icon, title, text }: { icon: ReactNode; title: string; text: string }) {
-  return (
-    <div className="empty-state">
-      <span>{icon}</span>
-      <strong>{title}</strong>
-      <p>{text}</p>
-    </div>
-  );
+  return <Modal title="Iniciar atendimento" eyebrow="NOVO REGISTRO" onClose={onClose} wide><form onSubmit={submit} className="modal__body form-grid">
+    <label className="field"><span>Cliente</span><input value={name} onChange={(e) => setName(e.target.value)} required autoFocus /></label>
+    <label className="field"><span>WhatsApp com DDD</span><input inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required /></label>
+    {duplicate && <div className="duplicate-warning field--wide"><AlertTriangle size={18} /><div><strong>Cliente já cadastrado</strong><span>O novo atendimento será vinculado ao cadastro de {duplicate.name}; não será criado cliente duplicado.</span></div></div>}
+    <label className="field"><span>Valor do pedido</span><input inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0,00" required /></label>
+    <label className="field"><span>Problema</span><select value={issue} onChange={(e) => setIssue(e.target.value)}>{Object.entries(issueLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+    <label className="field"><span>Prioridade</span><select value={priority} onChange={(e) => setPriority(e.target.value as Priority)}>{Object.entries(priorityLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+    <label className="field"><span>Enviar para conferência</span><select value={reviewer} onChange={(e) => setReviewer(e.target.value)}><option value="">Salvar como rascunho</option>{reviewers.map((person) => <option value={person.user_id} key={person.user_id}>{person.full_name || person.email}</option>)}</select></label>
+    <label className="field field--wide"><span>Descrição do problema</span><textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} required /></label>
+    {reviewer && <label className="field field--wide"><span>Orientação para quem vai conferir</span><textarea value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} rows={2} placeholder="Ex.: conferir se houve chargeback e se o comprovante está correto." /></label>}
+    <label className="field"><span>Tipo dos anexos</span><select value={category} onChange={(e) => setCategory(e.target.value as CaseAttachment["category"])}>{Object.entries(attachmentLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+    <label className="field file-field"><span>Imagens ou PDF</span><input type="file" accept="image/*,application/pdf" multiple onChange={(e) => setFiles(Array.from(e.target.files || []))} /><small>{files.length ? `${files.length} arquivo(s) selecionado(s)` : "Até 10 MB por arquivo"}</small></label>
+    {error && <div className="form-message form-message--error field--wide">{error}</div>}
+    <footer className="modal__actions field--wide"><button type="button" className="button button--ghost" onClick={onClose}>Cancelar</button><button className="button button--primary" disabled={busy}>{busy ? <Loader2 className="spin" size={17} /> : <Plus size={17} />}{reviewer ? "Criar e enviar" : "Criar rascunho"}</button></footer>
+  </form></Modal>;
 }
 
 function CaseList({ cases, onOpen }: { cases: NevCase[]; onOpen: (item: NevCase) => void }) {
-  if (cases.length === 0) {
-    return <EmptyState icon={<ClipboardList size={24} />} title="Nenhum atendimento aqui" text="Os registros aparecem assim que a equipe cadastrar uma pendência." />;
-  }
-  return (
-    <div className="case-list">
-      <div className="case-table case-table--head">
-        <span>Cliente</span>
-        <span>Pendência</span>
-        <span>Valor</span>
-        <span>Status</span>
-        <span>Prioridade</span>
-        <span />
-      </div>
-      {cases.map((item) => (
-        <button className="case-table case-table--row" key={item.id} onClick={() => onOpen(item)}>
-          <span className="case-customer">
-            <i>{item.customer_name.slice(0, 1).toUpperCase()}</i>
-            <span><strong>{item.customer_name}</strong><small>{caseCode(item.case_number)} · {formatDate(item.created_at)}</small></span>
-          </span>
-          <span className="case-issue"><strong>{issueLabels[item.issue_type] || "Outro"}</strong><small>{item.issue_description}</small></span>
-          <span className="case-money">{money.format(Number(item.order_value))}</span>
-          <span><StatusBadge status={item.status} /></span>
-          <span><PriorityBadge priority={item.priority} /></span>
-          <span className="case-arrow"><ChevronRight size={18} /></span>
-        </button>
-      ))}
-    </div>
-  );
+  if (!cases.length) return <EmptyState icon={<ClipboardList size={24} />} title="Nenhum atendimento" text="Os registros aparecerão aqui." />;
+  return <div className="case-list"><div className="case-table case-table--head"><span>Cliente</span><span>Problema</span><span>Ação</span><span>Status</span><span>Prioridade</span><span /></div>{cases.map((item) => <button className={`case-table case-table--row ${item.review_status === "changes_requested" ? "row-attention" : ""}`} key={item.id} onClick={() => onOpen(item)}><span className="case-customer"><i>{item.customer_name[0]?.toUpperCase()}</i><span><strong>{item.customer_name}</strong><small>{caseCode(item.case_number)} · {formatDate(item.created_at)}</small></span></span><span className="case-issue"><strong>{issueLabels[item.issue_type] || "Outro"}</strong><small>{item.issue_description}</small></span><span><Badge tone={item.review_status === "approved" ? "green" : item.review_status === "pending" ? "amber" : item.review_status === "changes_requested" ? "red" : "neutral"}>{reviewLabels[item.review_status]}</Badge></span><span><StatusBadge status={item.status} /></span><span><PriorityBadge priority={item.priority} /></span><span className="case-arrow"><ChevronRight size={18} /></span></button>)}</div>;
 }
 
-function NewCaseModal({
-  profile,
-  onClose,
-  onCreated,
-}: {
-  profile: Profile;
-  onClose: () => void;
-  onCreated: (item: NevCase) => void;
-}) {
-  const [customerName, setCustomerName] = useState("");
-  const [whatsapp, setWhatsapp] = useState("");
-  const [orderValue, setOrderValue] = useState("");
-  const [issueType, setIssueType] = useState("thai_order");
-  const [priority, setPriority] = useState<Priority>("normal");
-  const [description, setDescription] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+function CaseDetailsModal({ item, profile, profiles, onClose, onChanged }: { item: NevCase; profile: Profile; profiles: Profile[]; onClose: () => void; onChanged: () => void }) {
+  const [updates, setUpdates] = useState<CaseUpdate[]>([]); const [attachments, setAttachments] = useState<CaseAttachment[]>([]);
+  const [note, setNote] = useState(""); const [recipient, setRecipient] = useState(""); const [reviewer, setReviewer] = useState(item.review_requested_to || ""); const [reviewNote, setReviewNote] = useState("");
+  const [approvalNote, setApprovalNote] = useState(""); const [files, setFiles] = useState<File[]>([]); const [category, setCategory] = useState<CaseAttachment["category"]>("problem");
+  const [resolutionOpen, setResolutionOpen] = useState(item.review_status === "approved" && item.status !== "resolved"); const [resolutionType, setResolutionType] = useState<ResolutionType>("reorder");
+  const [resolutionAmount, setResolutionAmount] = useState(String(item.order_value).replace(".", ",")); const [resolutionNotes, setResolutionNotes] = useState(""); const [installments, setInstallments] = useState("3");
+  const [firstDueDate, setFirstDueDate] = useState(() => { const date = new Date(); date.setMonth(date.getMonth() + 1); return date.toISOString().slice(0, 10); });
+  const [busy, setBusy] = useState(false); const [error, setError] = useState("");
+  const reviewers = profiles.filter((person) => person.active && person.user_id !== profile.user_id);
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setError("");
-    const phone = normalizeWhatsapp(whatsapp);
-    if (phone.length < 10 || phone.length > 15) {
-      setError("Confira o número do WhatsApp, incluindo o DDD.");
-      return;
-    }
-    const value = Number(orderValue.replace(",", "."));
-    if (Number.isNaN(value) || value < 0) {
-      setError("Informe um valor válido para o pedido.");
-      return;
-    }
-    setBusy(true);
-    const { data, error: insertError } = await supabase
-      .from("nev_cases")
-      .insert({
-        customer_name: customerName.trim(),
-        whatsapp: phone,
-        order_value: value,
-        issue_type: issueType,
-        issue_description: description.trim(),
-        priority,
-        status: "open",
-        assigned_to: profile.user_id,
-        created_by: profile.user_id,
-      })
-      .select("*")
-      .single();
-
-    if (insertError) {
-      setError(insertError.message);
-      setBusy(false);
-      return;
-    }
-
-    await supabase.from("nev_case_updates").insert({
-      case_id: data.id,
-      author_id: profile.user_id,
-      kind: "status",
-      body: "Atendimento cadastrado e incluído na fila.",
-    });
-    onCreated(data as NevCase);
-    setBusy(false);
-  }
-
-  return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="modal modal--form" role="dialog" aria-modal="true" aria-label="Novo atendimento">
-        <header className="modal__header">
-          <div><span className="eyebrow">NOVO REGISTRO</span><h2>Iniciar atendimento</h2></div>
-          <button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={20} /></button>
-        </header>
-        <form onSubmit={submit} className="modal__body form-grid">
-          <label className="field field--wide">
-            <span>Nome do cliente</span>
-            <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Ex.: Daniel de Souza" required autoFocus />
-          </label>
-          <label className="field">
-            <span>WhatsApp com DDD</span>
-            <input inputMode="tel" value={whatsapp} onChange={(event) => setWhatsapp(event.target.value)} placeholder="(19) 99999-9999" required />
-          </label>
-          <label className="field">
-            <span>Valor do pedido</span>
-            <div className="money-input"><span>R$</span><input inputMode="decimal" value={orderValue} onChange={(event) => setOrderValue(event.target.value)} placeholder="0,00" required /></div>
-          </label>
-          <label className="field">
-            <span>Tipo de pendência</span>
-            <select value={issueType} onChange={(event) => setIssueType(event.target.value)}>
-              {Object.entries(issueLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </label>
-          <label className="field">
-            <span>Prioridade</span>
-            <select value={priority} onChange={(event) => setPriority(event.target.value as Priority)}>
-              {Object.entries(priorityLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </label>
-          <label className="field field--wide">
-            <span>O que aconteceu?</span>
-            <textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Descreva a pendência, o que já foi combinado e qualquer informação importante..." rows={5} required />
-          </label>
-          {error && <div className="form-message form-message--error field--wide">{error}</div>}
-          <footer className="modal__actions field--wide">
-            <button type="button" className="button button--ghost" onClick={onClose}>Cancelar</button>
-            <button className="button button--primary" disabled={busy}>
-              {busy ? <Loader2 className="spin" size={17} /> : <Plus size={17} />}
-              Abrir atendimento
-            </button>
-          </footer>
-        </form>
-      </section>
-    </div>
-  );
-}
-
-function CaseDetailsModal({
-  item,
-  profile,
-  profiles,
-  onClose,
-  onChanged,
-}: {
-  item: NevCase;
-  profile: Profile;
-  profiles: Profile[];
-  onClose: () => void;
-  onChanged: () => void;
-}) {
-  const [updates, setUpdates] = useState<CaseUpdate[]>([]);
-  const [loadingTimeline, setLoadingTimeline] = useState(true);
-  const [note, setNote] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [resolutionOpen, setResolutionOpen] = useState(false);
-  const [resolutionType, setResolutionType] = useState<ResolutionType>("store_credit");
-  const [resolutionAmount, setResolutionAmount] = useState(String(item.order_value).replace(".", ","));
-  const [resolutionNotes, setResolutionNotes] = useState("");
-  const [installmentCount, setInstallmentCount] = useState("3");
-  const [assignedTo, setAssignedTo] = useState(item.assigned_to || "");
-  const [firstDueDate, setFirstDueDate] = useState(() => {
-    const date = new Date();
-    date.setMonth(date.getMonth() + 1);
-    return date.toISOString().slice(0, 10);
-  });
-
-  const loadTimeline = useCallback(async () => {
-    const { data } = await supabase
-      .from("nev_case_updates")
-      .select("*")
-      .eq("case_id", item.id)
-      .order("created_at", { ascending: false });
-    setUpdates((data || []) as CaseUpdate[]);
-    setLoadingTimeline(false);
+  const loadDetails = useCallback(async () => {
+    const [updateResult, attachmentResult] = await Promise.all([
+      supabase.from("nev_case_updates").select("*").eq("case_id", item.id).order("created_at", { ascending: false }),
+      supabase.from("nev_case_attachments").select("*").eq("case_id", item.id).order("created_at", { ascending: false }),
+    ]);
+    setUpdates((updateResult.data || []) as CaseUpdate[]); setAttachments((attachmentResult.data || []) as CaseAttachment[]);
   }, [item.id]);
+  useEffect(() => { const timer = window.setTimeout(() => void loadDetails(), 0); return () => window.clearTimeout(timer); }, [loadDetails]);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => void loadTimeline(), 0);
-    return () => window.clearTimeout(timer);
-  }, [loadTimeline]);
-
-  async function addNote(event: FormEvent) {
-    event.preventDefault();
-    if (!note.trim()) return;
-    setBusy(true);
-    const { error: noteError } = await supabase.from("nev_case_updates").insert({
-      case_id: item.id,
-      author_id: profile.user_id,
-      kind: "note",
-      body: note.trim(),
-    });
-    if (noteError) setError(noteError.message);
-    else { setNote(""); await loadTimeline(); }
-    setBusy(false);
+  async function run(action: () => Promise<{ error?: { message: string } | null }>, done = true) {
+    setBusy(true); setError(""); const result = await action();
+    if (result.error) setError(result.error.message); else { await loadDetails(); if (done) onChanged(); }
+    setBusy(false); return !result.error;
   }
+  async function addNote(event: FormEvent) { event.preventDefault(); if (!note.trim()) return; const ok = await run(() => supabase.from("nev_case_updates").insert({ case_id: item.id, author_id: profile.user_id, recipient_id: recipient || null, kind: "note", body: note.trim() }), false); if (ok) setNote(""); }
+  async function requestReview() { if (!reviewer) { setError("Escolha quem vai conferir."); return; } await run(() => supabase.rpc("nev_request_case_review", { p_case_id: item.id, p_reviewer_id: reviewer, p_note: reviewNote || null })); }
+  async function decide(approved: boolean) { await run(() => supabase.rpc("nev_decide_case_review", { p_case_id: item.id, p_approved: approved, p_note: approvalNote || null })); }
+  async function resolve(event: FormEvent) { event.preventDefault(); await run(() => supabase.rpc("nev_apply_resolution", { p_case_id: item.id, p_resolution_type: resolutionType, p_amount: Number(resolutionAmount.replace(",", ".")), p_notes: resolutionNotes || null, p_installments: resolutionType === "installment_refund" ? Number(installments) : null, p_first_due_date: resolutionType === "installment_refund" ? firstDueDate : null })); }
+  async function upload() { if (!files.length) return; setBusy(true); setError(""); try { await uploadCaseFiles(item.id, files, category, profile); setFiles([]); await loadDetails(); onChanged(); } catch (e) { setError(e instanceof Error ? e.message : "Falha ao anexar."); } setBusy(false); }
+  async function openAttachment(attachment: CaseAttachment) { const { data, error: signedError } = await supabase.storage.from("nev-case-files").createSignedUrl(attachment.storage_path, 120); if (signedError) setError(signedError.message); else window.open(data.signedUrl, "_blank", "noopener,noreferrer"); }
+  async function renegotiate() { const ok = await run(() => supabase.rpc("nev_begin_renegotiation", { p_case_id: item.id, p_note: "Cliente solicitou mudança da solução." })); if (ok) setResolutionOpen(true); }
+  const canReview = item.review_status === "pending" && (item.review_requested_to === profile.user_id || profile.role === "admin");
 
-  async function changeStatus(status: CaseStatus) {
-    setBusy(true);
-    setError("");
-    const { error: updateError } = await supabase.from("nev_cases").update({ status }).eq("id", item.id);
-    if (updateError) setError(updateError.message);
-    else {
-      await supabase.from("nev_case_updates").insert({
-        case_id: item.id,
-        author_id: profile.user_id,
-        kind: "status",
-        body: `Status alterado para ${statusLabels[status]}.`,
-      });
-      onChanged();
-      onClose();
-    }
-    setBusy(false);
-  }
-
-  async function assignTo(userId: string) {
-    setBusy(true);
-    const { error: assignError } = await supabase.from("nev_cases").update({ assigned_to: userId }).eq("id", item.id);
-    if (assignError) setError(assignError.message);
-    else { setAssignedTo(userId); onChanged(); }
-    setBusy(false);
-  }
-
-  async function resolve(event: FormEvent) {
-    event.preventDefault();
-    setBusy(true);
-    setError("");
-    const amount = Number(resolutionAmount.replace(",", "."));
-    const installments = Number(installmentCount);
-    if (Number.isNaN(amount) || amount < 0) {
-      setError("Informe um valor válido para a solução.");
-      setBusy(false);
-      return;
-    }
-    const { error: resolveError } = await supabase.rpc("nev_apply_resolution", {
-      p_case_id: item.id,
-      p_resolution_type: resolutionType,
-      p_amount: amount,
-      p_notes: resolutionNotes.trim(),
-      p_installments: resolutionType === "installment_refund" ? installments : null,
-      p_first_due_date: resolutionType === "installment_refund" ? firstDueDate : null,
-    });
-    if (resolveError) setError(resolveError.message);
-    else { onChanged(); onClose(); }
-    setBusy(false);
-  }
-
-  const assigned = profiles.find((person) => person.user_id === assignedTo);
-  const amount = Number(resolutionAmount.replace(",", ".")) || 0;
-  const installmentPreview = amount / Math.max(Number(installmentCount) || 1, 1);
-
-  return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="modal modal--details" role="dialog" aria-modal="true" aria-label={`Atendimento ${caseCode(item.case_number)}`}>
-        <header className="modal__header details-header">
-          <div>
-            <button className="details-back" onClick={onClose}><ArrowLeft size={17} /> Voltar</button>
-            <div className="details-title"><span>{caseCode(item.case_number)}</span><StatusBadge status={item.status} /></div>
-            <h2>{item.customer_name}</h2>
-          </div>
-          <button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={20} /></button>
-        </header>
-
-        <div className="details-layout">
-          <div className="details-main">
-            {!resolutionOpen ? (
-              <>
-                <section className="details-summary">
-                  <div><span>Pendência</span><strong>{issueLabels[item.issue_type] || "Outro"}</strong></div>
-                  <div><span>Valor do pedido</span><strong>{money.format(Number(item.order_value))}</strong></div>
-                  <div><span>Prioridade</span><PriorityBadge priority={item.priority} /></div>
-                </section>
-                <section className="details-block">
-                  <h3>Relato da pendência</h3>
-                  <p>{item.issue_description}</p>
-                </section>
-                {item.resolution_type && (
-                  <section className="resolution-record">
-                    <span><CheckCircle2 size={19} /> Solução definida</span>
-                    <strong>{resolutionLabels[item.resolution_type]}</strong>
-                    <p>{item.resolution_notes || "Sem observações adicionais."}</p>
-                    <small>Valor acordado: {money.format(Number(item.resolution_amount || 0))}</small>
-                  </section>
-                )}
-                <section className="details-block">
-                  <div className="section-title"><div><span className="eyebrow">HISTÓRICO</span><h3>Movimentações</h3></div></div>
-                  <form className="note-form" onSubmit={addNote}>
-                    <textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Adicionar observação do atendimento..." rows={3} />
-                    <button className="button button--dark" disabled={busy || !note.trim()}><Send size={16} /> Registrar nota</button>
-                  </form>
-                  <div className="timeline">
-                    {loadingTimeline ? <div className="loader-line"><Loader2 className="spin" size={17} /> Carregando histórico...</div> : updates.length === 0 ? <p className="muted">Nenhuma movimentação registrada.</p> : updates.map((update) => {
-                      const author = profiles.find((person) => person.user_id === update.author_id);
-                      return (
-                        <div className="timeline__item" key={update.id}>
-                          <span className={`timeline__dot timeline__dot--${update.kind}`}>{update.kind === "payment" ? <CircleDollarSign size={14} /> : update.kind === "resolution" ? <Check size={14} /> : <Circle size={10} />}</span>
-                          <div><strong>{update.body}</strong><small>{author?.full_name || author?.email || "Sistema"} · {formatDateTime(update.created_at)}</small></div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </section>
-              </>
-            ) : (
-              <form className="resolution-form" onSubmit={resolve}>
-                <button className="details-back" type="button" onClick={() => setResolutionOpen(false)}><ArrowLeft size={17} /> Voltar ao atendimento</button>
-                <span className="eyebrow">DEFINIR SOLUÇÃO</span>
-                <h3>Como essa pendência será resolvida?</h3>
-                <div className="resolution-options">
-                  {(Object.entries(resolutionLabels) as Array<[ResolutionType, string]>).map(([value, label]) => (
-                    <button className={`resolution-option ${resolutionType === value ? "is-selected" : ""}`} type="button" key={value} onClick={() => setResolutionType(value)}>
-                      <span>{value === "store_credit" ? <WalletCards size={19} /> : value === "reorder" ? <RefreshCw size={19} /> : value === "installment_refund" ? <HandCoins size={19} /> : <FileText size={19} />}</span>
-                      <strong>{label}</strong>
-                      {resolutionType === value && <Check size={16} />}
-                    </button>
-                  ))}
-                </div>
-                <div className="form-grid">
-                  <label className="field">
-                    <span>Valor da solução</span>
-                    <div className="money-input"><span>R$</span><input inputMode="decimal" value={resolutionAmount} onChange={(event) => setResolutionAmount(event.target.value)} required /></div>
-                  </label>
-                  {resolutionType === "installment_refund" && (
-                    <label className="field">
-                      <span>Quantidade de parcelas</span>
-                      <select value={installmentCount} onChange={(event) => setInstallmentCount(event.target.value)}>
-                        {Array.from({ length: 12 }, (_, index) => index + 1).map((count) => <option value={count} key={count}>{count}x de {money.format(amount / count)}</option>)}
-                      </select>
-                    </label>
-                  )}
-                  {resolutionType === "installment_refund" && (
-                    <label className="field">
-                      <span>Vencimento da 1ª parcela</span>
-                      <input type="date" value={firstDueDate} onChange={(event) => setFirstDueDate(event.target.value)} required />
-                    </label>
-                  )}
-                  <label className={`field ${resolutionType !== "installment_refund" ? "field--wide" : ""}`}>
-                    <span>Detalhes do acordo</span>
-                    <textarea value={resolutionNotes} onChange={(event) => setResolutionNotes(event.target.value)} placeholder="Registre tudo que ficou combinado com o cliente..." rows={4} />
-                  </label>
-                </div>
-                {resolutionType === "installment_refund" && (
-                  <div className="installment-preview"><CalendarClock size={20} /><div><span>Previsão do acordo</span><strong>{installmentCount} parcelas de aproximadamente {money.format(installmentPreview)}</strong></div></div>
-                )}
-                {error && <div className="form-message form-message--error">{error}</div>}
-                <button className="button button--success button--full" disabled={busy}>
-                  {busy ? <Loader2 className="spin" size={17} /> : <CheckCircle2 size={17} />}
-                  Confirmar solução e resolver
-                </button>
-              </form>
-            )}
-          </div>
-
-          <aside className="details-aside">
-            <a className="whatsapp-button" href={whatsappUrl(item.whatsapp)} target="_blank" rel="noreferrer"><MessageCircle size={19} /> Chamar no WhatsApp</a>
-            <div className="aside-section">
-              <span className="aside-label">Responsável</span>
-              <select value={assignedTo} onChange={(event) => assignTo(event.target.value)} disabled={busy}>
-                {profiles.filter((person) => person.active).map((person) => <option key={person.user_id} value={person.user_id}>{person.full_name || person.email}</option>)}
-              </select>
-              <small>{assigned?.email}</small>
-            </div>
-            <div className="aside-section">
-              <span className="aside-label">WhatsApp</span>
-              <strong>+{item.whatsapp}</strong>
-              <span className="aside-label">Aberto em</span>
-              <strong>{formatDate(item.created_at)}</strong>
-            </div>
-            {item.status !== "resolved" && item.status !== "cancelled" && (
-              <div className="aside-actions">
-                <button className="button button--success button--full" onClick={() => setResolutionOpen(true)}><CheckCircle2 size={17} /> Definir solução</button>
-                {item.status !== "in_progress" && <button className="button button--ghost button--full" onClick={() => changeStatus("in_progress")} disabled={busy}>Marcar em atendimento</button>}
-                {item.status !== "waiting_customer" && <button className="button button--ghost button--full" onClick={() => changeStatus("waiting_customer")} disabled={busy}>Aguardar cliente</button>}
-                <button className="text-button text-button--danger" onClick={() => changeStatus("cancelled")} disabled={busy}>Cancelar atendimento</button>
-              </div>
-            )}
-            {item.status === "cancelled" && <button className="button button--ghost button--full" onClick={() => changeStatus("open")} disabled={busy}>Reabrir atendimento</button>}
-            {error && !resolutionOpen && <div className="form-message form-message--error">{error}</div>}
-          </aside>
-        </div>
-      </section>
-    </div>
-  );
+  return <Modal title={item.customer_name} eyebrow={`${caseCode(item.case_number)} · ${reviewLabels[item.review_status]}`} onClose={onClose} wide><div className="details-layout details-layout--workflow"><div className="details-main">
+    <div className="workflow-banner"><div><span>Próxima ação</span><strong>{item.review_status === "pending" ? `Conferência de ${personName(profiles, item.review_requested_to)}` : item.review_status === "approved" ? "Solução liberada" : item.review_status === "changes_requested" ? "Corrigir e reenviar" : "Enviar para conferência"}</strong></div><Badge tone={item.review_status === "approved" ? "green" : item.review_status === "changes_requested" ? "red" : "amber"}>{reviewLabels[item.review_status]}</Badge></div>
+    <section className="details-summary"><div><span>Problema</span><strong>{issueLabels[item.issue_type]}</strong></div><div><span>Pedido</span><strong>{money.format(Number(item.order_value))}</strong></div><div><span>Responsável</span><strong>{personName(profiles, item.assigned_to)}</strong></div></section>
+    <section className="details-block"><h3>Relato do cliente</h3><p>{item.issue_description}</p></section>
+    {item.review_status !== "approved" && !canReview && <section className="details-block action-card"><h3><ClipboardCheck size={18} /> Enviar para conferência</h3><div className="form-grid"><label className="field"><span>Quem vai conferir</span><select value={reviewer} onChange={(e) => setReviewer(e.target.value)}><option value="">Selecione</option>{reviewers.map((person) => <option key={person.user_id} value={person.user_id}>{person.full_name || person.email}</option>)}</select></label><label className="field field--wide"><span>O que deve ser conferido?</span><textarea value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} rows={2} placeholder="Ex.: verificar chargeback e comprovante." /></label><button className="button button--primary field--wide" onClick={requestReview} disabled={busy}><Send size={17} /> Enviar pendência</button></div></section>}
+    {canReview && <section className="details-block action-card action-card--attention"><h3><BellRing size={18} /> Aguardando sua conferência</h3><p>Confira as informações e os anexos. Aprove para liberar as soluções ou devolva pedindo ajustes.</p><label className="field"><span>Observação da análise</span><textarea value={approvalNote} onChange={(e) => setApprovalNote(e.target.value)} rows={3} /></label><div className="split-actions"><button className="button button--ghost" onClick={() => decide(false)} disabled={busy}>Pedir ajustes</button><button className="button button--success" onClick={() => decide(true)} disabled={busy}><CheckCircle2 size={17} /> Aprovar e liberar</button></div></section>}
+    {item.review_status === "approved" && item.status !== "resolved" && <section className="details-block action-card action-card--approved"><h3><CheckCircle2 size={18} /> Definir solução</h3>{!resolutionOpen ? <button className="button button--success" onClick={() => setResolutionOpen(true)}>Abrir opções de resolução</button> : <form className="form-grid" onSubmit={resolve}><label className="field"><span>Solução</span><select value={resolutionType} onChange={(e) => setResolutionType(e.target.value as ResolutionType)}>{Object.entries(resolutionLabels).filter(([key]) => key !== "store_credit").map(([key, label]) => <option value={key} key={key}>{label}</option>)}</select></label><label className="field"><span>Valor</span><input inputMode="decimal" value={resolutionAmount} onChange={(e) => setResolutionAmount(e.target.value)} required /></label>{resolutionType === "installment_refund" && <><label className="field"><span>Parcelas (1 a 36)</span><input type="number" min={1} max={36} value={installments} onChange={(e) => setInstallments(e.target.value)} /></label><label className="field"><span>Primeiro vencimento</span><input type="date" value={firstDueDate} onChange={(e) => setFirstDueDate(e.target.value)} /></label></>}<label className="field field--wide"><span>Observações do acordo</span><textarea value={resolutionNotes} onChange={(e) => setResolutionNotes(e.target.value)} rows={3} /></label><button className="button button--success field--wide" disabled={busy}><CheckCircle2 size={17} /> Confirmar solução</button></form>}</section>}
+    {item.status === "resolved" && <section className="details-block resolved-card"><h3><CheckCircle2 size={18} /> Solução atual</h3><strong>{item.resolution_type ? resolutionLabels[item.resolution_type] : "Resolvido"} · {money.format(Number(item.resolution_amount || 0))}</strong><p>{item.resolution_notes || "Sem observação."}</p><button className="button button--ghost" onClick={renegotiate}><RefreshCw size={17} /> Renegociar solução</button></section>}
+    <section className="details-block"><h3><MessageCircle size={18} /> Histórico e observações</h3><form className="note-form" onSubmit={addNote}><textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Escreva uma observação..." rows={2} /><select value={recipient} onChange={(e) => setRecipient(e.target.value)}><option value="">Sem destinatário</option>{profiles.filter((p) => p.active && p.user_id !== profile.user_id).map((p) => <option value={p.user_id} key={p.user_id}>Enviar para {p.full_name || p.email}</option>)}</select><button className="button button--primary" disabled={busy}><Send size={16} /> Salvar</button></form><div className="timeline">{updates.map((update) => <article key={update.id}><span className={`timeline-dot timeline-dot--${update.kind}`} /><div><div><strong>{personName(profiles, update.author_id)}</strong><time>{formatDateTime(update.created_at)}</time></div><p>{update.body}</p>{update.recipient_id && <small>Enviado para {personName(profiles, update.recipient_id)}</small>}</div></article>)}</div></section>
+  </div><aside className="details-aside"><a className="whatsapp-button" href={whatsappUrl(item.whatsapp)} target="_blank" rel="noreferrer"><MessageCircle size={18} /> Abrir WhatsApp</a><div className="aside-section"><span className="aside-label">Anexos do atendimento</span><div className="attachment-list">{attachments.map((attachment) => <button key={attachment.id} onClick={() => openAttachment(attachment)}><FileImage size={18} /><span><strong>{attachmentLabels[attachment.category]}</strong><small>{attachment.original_name} · {formatDateTime(attachment.created_at)}</small></span></button>)}{!attachments.length && <small>Nenhum anexo ainda.</small>}</div></div><div className="aside-section"><label className="field"><span>Tipo do arquivo</span><select value={category} onChange={(e) => setCategory(e.target.value as CaseAttachment["category"])}>{Object.entries(attachmentLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label><label className="field file-field"><span>Adicionar quando quiser</span><input type="file" accept="image/*,application/pdf" multiple onChange={(e) => setFiles(Array.from(e.target.files || []))} /></label><button className="button button--primary button--full" onClick={upload} disabled={busy || !files.length}><Paperclip size={16} /> Anexar {files.length || "arquivo"}</button></div>{error && <div className="form-message form-message--error">{error}</div>}</aside></div></Modal>;
 }
 
-function DashboardView({
-  cases,
-  refundPlans,
-  onOpenCase,
-  onNewCase,
-  onNavigate,
-}: {
-  cases: NevCase[];
-  refundPlans: RefundPlan[];
-  onOpenCase: (item: NevCase) => void;
-  onNewCase: () => void;
-  onNavigate: (tab: Tab) => void;
-}) {
-  const active = cases.filter((item) => !["resolved", "cancelled"].includes(item.status));
-  const resolved = cases.filter((item) => item.status === "resolved");
-  const pendingValue = active.reduce((total, item) => total + Number(item.order_value), 0);
-  const resolvedValue = resolved.reduce((total, item) => total + Number(item.resolution_amount || item.order_value), 0);
-  const installments = refundPlans.flatMap((plan) => plan.nev_refund_installments.map((installment) => ({ ...installment, plan })));
-  const unpaid = installments.filter((item) => item.status === "pending");
-  const unpaidValue = unpaid.reduce((total, item) => total + Number(item.amount), 0);
-  const today = new Date().toISOString().slice(0, 10);
-  const overdue = unpaid.filter((item) => item.due_date < today);
-  const queue = [
-    { status: "open" as CaseStatus, label: "Novos", count: active.filter((item) => item.status === "open").length },
-    { status: "in_progress" as CaseStatus, label: "Em atendimento", count: active.filter((item) => item.status === "in_progress").length },
-    { status: "waiting_customer" as CaseStatus, label: "Aguardando cliente", count: active.filter((item) => item.status === "waiting_customer").length },
-  ];
-  const maxQueue = Math.max(...queue.map((item) => item.count), 1);
-  const nextInstallments = unpaid.sort((a, b) => a.due_date.localeCompare(b.due_date)).slice(0, 4);
-
-  return (
-    <div className="view-stack">
-      <section className="hero-row">
-        <div><span className="eyebrow">RESUMO OPERACIONAL</span><h1>Visão geral</h1><p>Acompanhe o que precisa da atenção da equipe hoje.</p></div>
-        <button className="button button--primary hero-new" onClick={onNewCase}><Plus size={18} /> Novo atendimento</button>
-      </section>
-
-      <section className="stats-grid">
-        <StatCard label="Em atendimento" value={active.length} detail={`${queue[0].count} novos na fila`} icon={<Headphones size={21} />} tone="blue" />
-        <StatCard label="Já resolvidos" value={resolved.length} detail="acordos concluídos" icon={<CheckCircle2 size={21} />} tone="green" />
-        <StatCard label="Valor pendente" value={money.format(pendingValue)} detail="em pedidos abertos" icon={<WalletCards size={21} />} tone="amber" />
-        <StatCard label="Parcelas a pagar" value={money.format(unpaidValue)} detail={`${unpaid.length} parcelas · ${overdue.length} atrasadas`} icon={<CalendarClock size={21} />} tone="violet" />
-      </section>
-
-      <section className="dashboard-grid">
-        <article className="panel queue-panel">
-          <div className="panel__header"><div><span className="eyebrow">FLUXO ATUAL</span><h2>Fila de atendimento</h2></div><button className="link-button" onClick={() => onNavigate("cases")}>Ver todos <ChevronRight size={16} /></button></div>
-          <div className="queue-list">
-            {queue.map((entry) => (
-              <div className="queue-row" key={entry.status}>
-                <div><StatusBadge status={entry.status} /><strong>{entry.count}</strong></div>
-                <div className="progress"><i style={{ width: `${Math.max((entry.count / maxQueue) * 100, entry.count ? 10 : 0)}%` }} /></div>
-              </div>
-            ))}
-          </div>
-          <div className="resolved-value"><span><CheckCircle2 size={18} /> Valor já resolvido</span><strong>{money.format(resolvedValue)}</strong></div>
-        </article>
-
-        <article className="panel installments-panel">
-          <div className="panel__header"><div><span className="eyebrow">FINANCEIRO</span><h2>Próximas parcelas</h2></div><button className="link-button" onClick={() => onNavigate("refunds")}>Abrir agenda <ChevronRight size={16} /></button></div>
-          {nextInstallments.length === 0 ? <EmptyState icon={<CalendarDays size={23} />} title="Nenhuma parcela pendente" text="Os reembolsos parcelados aparecerão aqui." /> : (
-            <div className="installment-mini-list">
-              {nextInstallments.map((entry) => (
-                <div className="installment-mini" key={entry.id}>
-                  <span className={`date-tile ${entry.due_date < today ? "date-tile--late" : ""}`}><strong>{new Date(`${entry.due_date}T12:00:00`).getDate()}</strong><small>{new Date(`${entry.due_date}T12:00:00`).toLocaleDateString("pt-BR", { month: "short" }).replace(".", "")}</small></span>
-                  <div><strong>{entry.plan.nev_cases?.customer_name || "Cliente"}</strong><small>{caseCode(entry.plan.nev_cases?.case_number || 0)} · {entry.installment_number}ª de {entry.plan.installment_count}</small></div>
-                  <b>{money.format(Number(entry.amount))}</b>
-                </div>
-              ))}
-            </div>
-          )}
-        </article>
-      </section>
-
-      <section className="panel recent-panel">
-        <div className="panel__header"><div><span className="eyebrow">ÚLTIMOS REGISTROS</span><h2>Atendimentos recentes</h2></div><button className="link-button" onClick={() => onNavigate("cases")}>Ver todos <ChevronRight size={16} /></button></div>
-        <CaseList cases={cases.slice(0, 6)} onOpen={onOpenCase} />
-      </section>
-    </div>
-  );
+function NewTaskModal({ profile, profiles, onClose, onCreated }: { profile: Profile; profiles: Profile[]; onClose: () => void; onCreated: () => void }) {
+  const [title, setTitle] = useState(""); const [description, setDescription] = useState(""); const [priority, setPriority] = useState<Priority>("normal"); const [assigned, setAssigned] = useState(profile.user_id); const [due, setDue] = useState(""); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
+  async function submit(event: FormEvent) { event.preventDefault(); setBusy(true); setError(""); const { error: taskError } = await supabase.rpc("nev_create_task", { p_title: title.trim(), p_description: description.trim(), p_priority: priority, p_assigned_to: assigned, p_due_at: due ? new Date(due).toISOString() : null }); if (taskError) setError(taskError.message); else onCreated(); setBusy(false); }
+  return <Modal title="Nova tarefa" eyebrow="AÇÃO INTERNA" onClose={onClose}><form className="modal__body form-stack" onSubmit={submit}><label className="field"><span>O que precisa ser feito?</span><input value={title} onChange={(e) => setTitle(e.target.value)} required autoFocus /></label><label className="field"><span>Detalhes</span><textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} /></label><div className="form-grid"><label className="field"><span>Responsável</span><select value={assigned} onChange={(e) => setAssigned(e.target.value)}>{profiles.filter((p) => p.active).map((p) => <option key={p.user_id} value={p.user_id}>{p.full_name || p.email}</option>)}</select></label><label className="field"><span>Prioridade</span><select value={priority} onChange={(e) => setPriority(e.target.value as Priority)}>{Object.entries(priorityLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label><label className="field field--wide"><span>Prazo para entregar pronta</span><input type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} /></label></div>{error && <div className="form-message form-message--error">{error}</div>}<footer className="modal__actions"><button type="button" className="button button--ghost" onClick={onClose}>Cancelar</button><button className="button button--primary" disabled={busy}>{busy ? <Loader2 className="spin" size={17} /> : <Send size={17} />} Enviar tarefa</button></footer></form></Modal>;
 }
 
-function CasesView({ cases, onOpenCase, onNewCase }: { cases: NevCase[]; onOpenCase: (item: NevCase) => void; onNewCase: () => void }) {
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"active" | CaseStatus | "all">("active");
-  const filtered = cases.filter((item) => {
-    const query = search.toLowerCase().replace(/\D/g, "") || search.toLowerCase();
-    const matchesSearch = !search || item.customer_name.toLowerCase().includes(search.toLowerCase()) || item.whatsapp.includes(query) || caseCode(item.case_number).toLowerCase().includes(search.toLowerCase());
-    const matchesFilter = filter === "all" || (filter === "active" ? !["resolved", "cancelled"].includes(item.status) : item.status === filter);
-    return matchesSearch && matchesFilter;
-  });
-
-  return (
-    <div className="view-stack">
-      <section className="hero-row"><div><span className="eyebrow">CENTRAL DE PENDÊNCIAS</span><h1>Atendimentos</h1><p>Consulte, atualize e resolva cada caso.</p></div><button className="button button--primary" onClick={onNewCase}><Plus size={18} /> Novo atendimento</button></section>
-      <section className="panel cases-panel">
-        <div className="filters">
-          <label className="search-box"><Search size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar cliente, WhatsApp ou protocolo" /></label>
-          <select value={filter} onChange={(event) => setFilter(event.target.value as typeof filter)} aria-label="Filtrar atendimentos">
-            <option value="active">Pendentes</option><option value="all">Todos</option><option value="open">Novos</option><option value="in_progress">Em atendimento</option><option value="waiting_customer">Aguardando cliente</option><option value="resolved">Resolvidos</option><option value="cancelled">Cancelados</option>
-          </select>
-        </div>
-        <div className="results-count"><strong>{filtered.length}</strong> {filtered.length === 1 ? "atendimento encontrado" : "atendimentos encontrados"}</div>
-        <CaseList cases={filtered} onOpen={onOpenCase} />
-      </section>
-    </div>
-  );
+function TaskDetailsModal({ task, profile, profiles, onClose, onChanged }: { task: NevTask; profile: Profile; profiles: Profile[]; onClose: () => void; onChanged: () => void }) {
+  const [updates, setUpdates] = useState<TaskUpdate[]>([]); const [text, setText] = useState(""); const [snoozeAt, setSnoozeAt] = useState(""); const [reason, setReason] = useState(""); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
+  const load = useCallback(async () => { const { data } = await supabase.from("nev_task_updates").select("*").eq("task_id", task.id).order("created_at", { ascending: false }); setUpdates((data || []) as TaskUpdate[]); }, [task.id]);
+  useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer); }, [load]);
+  async function call(name: string, args: Record<string, unknown>) { setBusy(true); setError(""); const { error: rpcError } = await supabase.rpc(name, args); if (rpcError) setError(rpcError.message); else { await load(); onChanged(); } setBusy(false); }
+  const assignedToMe = task.assigned_to === profile.user_id; const creatorWaiting = task.status === "awaiting_creator" && task.created_by === profile.user_id;
+  return <Modal title={task.title} eyebrow="TAREFA" onClose={onClose}><div className="modal__body form-stack"><div className="task-detail-head"><PriorityBadge priority={task.priority} /><Badge tone={task.status === "done" ? "green" : creatorWaiting || assignedToMe ? "amber" : "neutral"}>{task.status === "done" ? "Concluída" : task.status === "awaiting_creator" ? "Aguardando resposta" : "Em aberto"}</Badge></div><p className="task-description">{task.description || "Sem detalhes adicionais."}</p><div className="task-meta"><span>Responsável <strong>{personName(profiles, task.assigned_to)}</strong></span><span>Prazo <strong>{task.due_at ? formatDateTime(task.due_at) : "Sem prazo"}</strong></span></div>
+    {task.status !== "done" && assignedToMe && <section className="task-action-box"><h3>Minha ação</h3><textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Digite uma pergunta para quem criou..." rows={2} /><div className="split-actions"><button className="button button--ghost" disabled={!text.trim() || busy} onClick={() => call("nev_task_send_question", { p_task_id: task.id, p_body: text.trim() })}><MessageCircle size={16} /> Enviar pergunta</button><button className="button button--success" disabled={busy} onClick={() => call("nev_task_complete", { p_task_id: task.id })}><Check size={16} /> Marcar como feita</button></div></section>}
+    {creatorWaiting && <section className="task-action-box action-card--attention"><h3>Responder para o responsável continuar</h3><textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} /><button className="button button--primary" disabled={!text.trim() || busy} onClick={() => call("nev_task_answer", { p_task_id: task.id, p_body: text.trim() })}><Send size={16} /> Responder e devolver</button></section>}
+    {task.status !== "done" && assignedToMe && <section className="task-action-box"><h3><PauseCircle size={17} /> Adiar tarefa</h3><input type="datetime-local" value={snoozeAt} onChange={(e) => setSnoozeAt(e.target.value)} /><textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Motivo obrigatório" rows={2} /><button className="button button--ghost" disabled={!snoozeAt || !reason.trim() || busy} onClick={() => call("nev_task_snooze", { p_task_id: task.id, p_until: new Date(snoozeAt).toISOString(), p_reason: reason.trim() })}>Adiar até esta data</button></section>}
+    {error && <div className="form-message form-message--error">{error}</div>}<div className="timeline compact-timeline">{updates.map((update) => <article key={update.id}><span className="timeline-dot" /><div><div><strong>{personName(profiles, update.author_id)}</strong><time>{formatDateTime(update.created_at)}</time></div><p>{update.body}</p></div></article>)}</div></div></Modal>;
 }
 
-function RefundsView({ plans, onChanged }: { plans: RefundPlan[]; onChanged: () => void }) {
-  const [filter, setFilter] = useState<"pending" | "paid" | "all">("pending");
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [error, setError] = useState("");
-  const today = new Date().toISOString().slice(0, 10);
-  const rows = plans.flatMap((plan) => plan.nev_refund_installments.map((installment) => ({ ...installment, plan })))
-    .filter((entry) => filter === "all" || entry.status === filter)
-    .sort((a, b) => a.due_date.localeCompare(b.due_date));
-  const pending = plans.flatMap((plan) => plan.nev_refund_installments).filter((item) => item.status === "pending");
-  const pendingValue = pending.reduce((sum, item) => sum + Number(item.amount), 0);
-  const overdue = pending.filter((item) => item.due_date < today);
+function PaymentModal({ entry, onClose, onPaid }: { entry: RefundInstallment; onClose: () => void; onPaid: () => void }) {
+  const remaining = Number(entry.amount) - Number(entry.paid_amount || 0); const [amount, setAmount] = useState(String(remaining).replace(".", ",")); const [notes, setNotes] = useState(""); const [newDue, setNewDue] = useState(""); const [reason, setReason] = useState(""); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
+  const partial = Number(amount.replace(",", ".")) < remaining;
+  async function submit(event: FormEvent) { event.preventDefault(); setBusy(true); setError(""); const { error: paymentError } = await supabase.rpc("nev_record_installment_payment", { p_installment_id: entry.id, p_amount: Number(amount.replace(",", ".")), p_notes: notes || null, p_new_due_date: partial && newDue ? newDue : null, p_delay_reason: partial && newDue ? reason : null }); if (paymentError) setError(paymentError.message); else onPaid(); setBusy(false); }
+  return <Modal title="Registrar pagamento" eyebrow={`PARCELA ${entry.installment_number}`} onClose={onClose}><form className="modal__body form-stack" onSubmit={submit}><div className="payment-balance"><span>Saldo desta parcela</span><strong>{money.format(remaining)}</strong></div><label className="field"><span>Valor pago agora</span><input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} required /></label>{partial && <><div className="form-message form-message--info">Será registrado pagamento parcial. O restante continuará pendente.</div><label className="field"><span>Adiar restante para</span><input type="date" value={newDue} onChange={(e) => setNewDue(e.target.value)} /></label>{newDue && <label className="field"><span>Motivo do adiamento</span><textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} required /></label>}</>}<label className="field"><span>Observação</span><textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} /></label>{error && <div className="form-message form-message--error">{error}</div>}<button className="button button--success button--full" disabled={busy}>{busy && <Loader2 className="spin" size={17} />}{partial ? "Salvar pagamento parcial" : "Marcar como pago integral"}</button></form></Modal>;
+}
 
-  async function togglePaid(entry: RefundInstallment, paid: boolean) {
-    setBusyId(entry.id);
-    setError("");
-    const { error: paymentError } = await supabase.rpc("nev_mark_installment_paid", {
-      p_installment_id: entry.id,
-      p_paid: paid,
-      p_notes: null,
-    });
-    if (paymentError) setError(paymentError.message);
-    else onChanged();
-    setBusyId(null);
-  }
+function DashboardView({ cases, tasks, refunds, myAction, onTab, onNewCase }: { cases: NevCase[]; tasks: NevTask[]; refunds: RefundPlan[]; myAction: number; onTab: (tab: Tab) => void; onNewCase: () => void }) {
+  const active = cases.filter((item) => !["resolved", "cancelled"].includes(item.status)); const pending = refunds.flatMap((p) => p.nev_refund_installments).filter((i) => ["pending", "partial"].includes(i.status)); const today = new Date().toISOString(); const lateTasks = tasks.filter((t) => t.status !== "done" && t.due_at && t.due_at < today).length;
+  return <div className="view-stack"><section className="hero-row"><div><span className="eyebrow">RESUMO OPERACIONAL</span><h1>Visão geral</h1><p>Veja o que precisa andar hoje.</p></div><button className="button button--primary" onClick={onNewCase}><Plus size={18} /> Novo atendimento</button></section><section className="stats-grid"><StatCard label="Aguardando sua ação" value={myAction} detail="itens que dependem de você" icon={<BellRing size={21} />} tone="amber" /><StatCard label="Atendimentos ativos" value={active.length} detail={`${cases.filter((c) => c.review_status === "pending").length} em conferência`} icon={<Headphones size={21} />} tone="blue" /><StatCard label="Tarefas atrasadas" value={lateTasks} detail="prazo já vencido" icon={<CalendarClock size={21} />} tone="violet" /><StatCard label="Reembolsos pendentes" value={money.format(pending.reduce((sum, i) => sum + Number(i.amount) - Number(i.paid_amount || 0), 0))} detail={`${pending.length} parcelas`} icon={<WalletCards size={21} />} tone="green" /></section><section className="dashboard-grid"><article className="panel action-spotlight"><span className="eyebrow">PRIORIDADE</span><h2>Aguardando sua ação</h2><p>Conferências, respostas e tarefas que não podem seguir sem você.</p><button className="button button--dark" onClick={() => onTab("action")}>Abrir minha fila <ChevronRight size={17} /></button></article><article className="panel"><div className="panel__header"><div><span className="eyebrow">ATENDIMENTOS</span><h2>Últimos registros</h2></div><button className="link-button" onClick={() => onTab("cases")}>Ver todos</button></div><div className="simple-list">{cases.slice(0, 5).map((item) => <button key={item.id} onClick={() => onTab("cases")}><span>{caseCode(item.case_number)}</span><strong>{item.customer_name}</strong><Badge tone={item.review_status === "approved" ? "green" : "amber"}>{reviewLabels[item.review_status]}</Badge></button>)}</div></article></section></div>;
+}
 
-  return (
-    <div className="view-stack">
-      <section className="hero-row"><div><span className="eyebrow">AGENDA FINANCEIRA</span><h1>Reembolsos</h1><p>Acompanhe vencimentos e confirme cada pagamento.</p></div></section>
-      <section className="refund-stats">
-        <div><span>Saldo a pagar</span><strong>{money.format(pendingValue)}</strong><small>{pending.length} parcelas pendentes</small></div>
-        <div><span>Parcelas atrasadas</span><strong className={overdue.length ? "danger-text" : ""}>{overdue.length}</strong><small>{money.format(overdue.reduce((sum, item) => sum + Number(item.amount), 0))} em atraso</small></div>
-        <div><span>Acordos ativos</span><strong>{plans.filter((plan) => plan.status === "open").length}</strong><small>reembolsos em andamento</small></div>
-      </section>
-      <section className="panel refunds-panel">
-        <div className="panel__header refunds-header"><div><span className="eyebrow">PARCELAS</span><h2>Agenda de pagamentos</h2></div><div className="segmented"><button className={filter === "pending" ? "is-active" : ""} onClick={() => setFilter("pending")}>Pendentes</button><button className={filter === "paid" ? "is-active" : ""} onClick={() => setFilter("paid")}>Pagas</button><button className={filter === "all" ? "is-active" : ""} onClick={() => setFilter("all")}>Todas</button></div></div>
-        {error && <div className="form-message form-message--error">{error}</div>}
-        {rows.length === 0 ? <EmptyState icon={<ReceiptText size={24} />} title="Nenhuma parcela nesta lista" text="Quando um reembolso parcelado for combinado, os vencimentos serão criados automaticamente." /> : (
-          <div className="refund-list">
-            {rows.map((entry) => {
-              const late = entry.status === "pending" && entry.due_date < today;
-              return (
-                <article className="refund-row" key={entry.id}>
-                  <span className={`date-tile ${late ? "date-tile--late" : entry.status === "paid" ? "date-tile--paid" : ""}`}><strong>{new Date(`${entry.due_date}T12:00:00`).getDate()}</strong><small>{new Date(`${entry.due_date}T12:00:00`).toLocaleDateString("pt-BR", { month: "short" }).replace(".", "")}</small></span>
-                  <div className="refund-customer"><strong>{entry.plan.nev_cases?.customer_name || "Cliente"}</strong><small>{caseCode(entry.plan.nev_cases?.case_number || 0)} · Parcela {entry.installment_number}/{entry.plan.installment_count}</small></div>
-                  <div className="refund-due"><span>Vencimento</span><strong>{formatDate(entry.due_date)}</strong></div>
-                  <strong className="refund-amount">{money.format(Number(entry.amount))}</strong>
-                  <div className="refund-status">{entry.status === "paid" ? <span className="paid-label"><CheckCircle2 size={16} /> Pago</span> : late ? <span className="late-label"><AlertTriangle size={16} /> Atrasado</span> : <span className="pending-label"><Clock3 size={16} /> Pendente</span>}</div>
-                  <button className={`button ${entry.status === "paid" ? "button--ghost" : "button--success"}`} disabled={busyId === entry.id} onClick={() => togglePaid(entry, entry.status !== "paid")}>
-                    {busyId === entry.id ? <Loader2 className="spin" size={16} /> : entry.status === "paid" ? <RefreshCw size={16} /> : <Check size={16} />}
-                    {entry.status === "paid" ? "Desmarcar" : "Marcar pago"}
-                  </button>
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </section>
-    </div>
-  );
+function CasesView({ cases, onOpen, onNew }: { cases: NevCase[]; onOpen: (item: NevCase) => void; onNew: () => void }) {
+  const [search, setSearch] = useState(""); const [filter, setFilter] = useState("active"); const filtered = cases.filter((item) => (!search || `${item.customer_name} ${item.whatsapp} ${caseCode(item.case_number)}`.toLowerCase().includes(search.toLowerCase())) && (filter === "all" || filter === "active" && !["resolved", "cancelled"].includes(item.status) || item.review_status === filter || item.status === filter));
+  return <div className="view-stack"><section className="hero-row"><div><span className="eyebrow">CENTRAL DE PENDÊNCIAS</span><h1>Atendimentos</h1><p>Documente, envie para conferência e resolva.</p></div><button className="button button--primary" onClick={onNew}><Plus size={18} /> Novo atendimento</button></section><section className="panel cases-panel"><div className="filters"><label className="search-box"><Search size={18} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar cliente, WhatsApp ou protocolo" /></label><select value={filter} onChange={(e) => setFilter(e.target.value)}><option value="active">Pendentes</option><option value="all">Todos</option><option value="pending">Aguardando conferência</option><option value="changes_requested">Com ajustes</option><option value="approved">Liberados</option><option value="resolved">Resolvidos</option></select></div><CaseList cases={filtered} onOpen={onOpen} /></section></div>;
+}
+
+function ActionView({ cases, tasks, profile, onCase, onTask }: { cases: NevCase[]; tasks: NevTask[]; profile: Profile; onCase: (item: NevCase) => void; onTask: (task: NevTask) => void }) {
+  const now = new Date().toISOString(); const caseActions = cases.filter((item) => item.current_action_user === profile.user_id && !["resolved", "cancelled"].includes(item.status)); const taskActions = tasks.filter((task) => task.waiting_on === profile.user_id && task.status !== "done" && (!task.snoozed_until || task.snoozed_until <= now));
+  return <div className="view-stack"><section className="hero-row"><div><span className="eyebrow">SUA FILA PRIORITÁRIA</span><h1>Aguardando sua ação</h1><p>Somente o que depende de você agora.</p></div></section><section className="panel"><div className="panel__header"><h2>Atendimentos ({caseActions.length})</h2></div><CaseList cases={caseActions} onOpen={onCase} /></section><section className="panel"><div className="panel__header"><h2>Tarefas ({taskActions.length})</h2></div><TaskList tasks={taskActions} profiles={[]} onOpen={onTask} /></section></div>;
+}
+
+function TaskList({ tasks, profiles, onOpen }: { tasks: NevTask[]; profiles: Profile[]; onOpen: (task: NevTask) => void }) {
+  if (!tasks.length) return <EmptyState icon={<ClipboardCheck size={24} />} title="Nada aguardando" text="As tarefas aparecem aqui quando alguém precisa agir." />;
+  const now = new Date().toISOString(); return <div className="task-list">{tasks.map((task) => { const late = task.status !== "done" && !!task.due_at && task.due_at < now; return <button className={`task-row ${late ? "task-row--late" : ""}`} key={task.id} onClick={() => onOpen(task)}><span className="task-check">{task.status === "done" ? <Check size={17} /> : <ClipboardList size={17} />}</span><div><strong>{task.title}</strong><small>{profiles.length ? personName(profiles, task.assigned_to) : "Sua ação"}{task.due_at ? ` · Prazo ${formatDateTime(task.due_at)}` : " · Sem prazo"}</small></div><PriorityBadge priority={task.priority} />{late && <Badge tone="red">Atrasada</Badge>}<ChevronRight size={18} /></button>; })}</div>;
+}
+
+function TasksView({ tasks, profiles, onOpen, onNew }: { tasks: NevTask[]; profiles: Profile[]; onOpen: (task: NevTask) => void; onNew: () => void }) {
+  const [filter, setFilter] = useState("open"); const filtered = tasks.filter((task) => filter === "all" ? true : filter === "done" ? task.status === "done" : task.status !== "done");
+  return <div className="view-stack"><section className="hero-row"><div><span className="eyebrow">TRABALHO INTERNO</span><h1>Tarefas da equipe</h1><p>Responsável, prioridade, prazo, perguntas e conclusão.</p></div><button className="button button--primary" onClick={onNew}><Plus size={18} /> Nova tarefa</button></section><section className="panel"><div className="filters"><select value={filter} onChange={(e) => setFilter(e.target.value)}><option value="open">Em aberto</option><option value="done">Concluídas</option><option value="all">Todas</option></select></div><TaskList tasks={filtered} profiles={profiles} onOpen={onOpen} /></section></div>;
+}
+
+function RefundsView({ plans, onPay }: { plans: RefundPlan[]; onPay: (entry: RefundInstallment) => void }) {
+  const rows = plans.flatMap((plan) => plan.nev_refund_installments.map((entry) => ({ ...entry, plan }))).filter((entry) => entry.status !== "cancelled").sort((a, b) => a.due_date.localeCompare(b.due_date)); const today = new Date().toISOString().slice(0, 10);
+  return <div className="view-stack"><section className="hero-row"><div><span className="eyebrow">AGENDA FINANCEIRA</span><h1>Parcelas de reembolso</h1><p>Registre pagamentos integrais ou parciais e adie somente o saldo.</p></div></section><section className="panel refunds-panel">{rows.length ? <div className="refund-list">{rows.map((entry) => { const remaining = Number(entry.amount) - Number(entry.paid_amount || 0); const late = ["pending", "partial"].includes(entry.status) && entry.due_date < today; return <article className="refund-row" key={entry.id}><span className={`date-tile ${late ? "date-tile--late" : entry.status === "paid" ? "date-tile--paid" : ""}`}><strong>{new Date(`${entry.due_date}T12:00:00`).getDate()}</strong><small>{new Date(`${entry.due_date}T12:00:00`).toLocaleDateString("pt-BR", { month: "short" }).replace(".", "")}</small></span><div className="refund-customer"><strong>{entry.plan.nev_cases?.customer_name || "Cliente"}</strong><small>{caseCode(entry.plan.nev_cases?.case_number || 0)} · Parcela {entry.installment_number}/{entry.plan.installment_count}</small></div><div className="refund-due"><span>Pago / total</span><strong>{money.format(Number(entry.paid_amount || 0))} / {money.format(Number(entry.amount))}</strong></div><strong className="refund-amount">Saldo {money.format(remaining)}</strong><div className="refund-status">{entry.status === "paid" ? <Badge tone="green">Pago</Badge> : entry.status === "partial" ? <Badge tone="amber">Parcial</Badge> : late ? <Badge tone="red">Atrasado</Badge> : <Badge>Pendente</Badge>}</div>{entry.status !== "paid" && <button className="button button--success" onClick={() => onPay(entry)}><CircleDollarSign size={16} /> Registrar pagamento</button>}</article>; })}</div> : <EmptyState icon={<HandCoins size={24} />} title="Nenhuma parcela" text="Parcelas surgirão após uma solução de reembolso." />}</section></div>;
+}
+
+function AuditView({ events, profiles }: { events: AuditEvent[]; profiles: Profile[] }) {
+  return <div className="view-stack"><section className="hero-row"><div><span className="eyebrow">VISÍVEL SOMENTE PARA CLOVIS</span><h1>Histórico de acessos e ações</h1><p>Data, hora, usuário e tudo que foi alterado no sistema.</p></div></section><section className="panel audit-panel"><div className="audit-list">{events.map((event) => <article key={event.id}><span className="audit-icon">{event.entity_type === "access" ? <UserCheck size={17} /> : <History size={17} />}</span><div><strong>{event.entity_type === "access" ? "Acesso ao sistema" : `${event.action.toUpperCase()} em ${event.entity_type.replace("nev_", "")}`}</strong><small>{personName(profiles, event.actor_id)} · {formatDateTime(event.created_at)}</small></div><code>{event.entity_id || "—"}</code></article>)}</div></section></div>;
 }
 
 function TeamView({ profile, profiles, onChanged }: { profile: Profile; profiles: Profile[]; onChanged: () => void }) {
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [error, setError] = useState("");
-  const isAdmin = profile.role === "admin";
-  const sorted = [...profiles].sort((a, b) => Number(a.active) - Number(b.active) || (a.full_name || a.email).localeCompare(b.full_name || b.email));
-
-  async function changePerson(person: Profile, active: boolean, role: UserRole) {
-    setBusyId(person.user_id);
-    setError("");
-    const { error: updateError } = await supabase.rpc("nev_admin_set_profile", {
-      p_user_id: person.user_id,
-      p_active: active,
-      p_role: role,
-    });
-    if (updateError) setError(updateError.message);
-    else onChanged();
-    setBusyId(null);
-  }
-
-  return (
-    <div className="view-stack">
-      <section className="hero-row"><div><span className="eyebrow">ACESSOS E PERMISSÕES</span><h1>Equipe</h1><p>Aprove atendentes e defina quem pode administrar o sistema.</p></div></section>
-      <section className="team-guide"><span><UserCheck size={22} /></span><div><strong>Como adicionar um atendente?</strong><p>Peça para a pessoa abrir o link do sistema e clicar em “Primeiro acesso”. O cadastro aparecerá abaixo para aprovação.</p></div></section>
-      <section className="panel team-panel">
-        <div className="panel__header"><div><span className="eyebrow">USUÁRIOS</span><h2>{profiles.length} {profiles.length === 1 ? "pessoa cadastrada" : "pessoas cadastradas"}</h2></div></div>
-        {!isAdmin && <div className="form-message form-message--info">Você pode consultar a equipe, mas apenas administradores alteram acessos.</div>}
-        {error && <div className="form-message form-message--error">{error}</div>}
-        <div className="team-list">
-          {sorted.map((person) => (
-            <article className="team-row" key={person.user_id}>
-              <span className="avatar">{(person.full_name || person.email).slice(0, 1).toUpperCase()}</span>
-              <div className="team-person"><strong>{person.full_name || "Nome não informado"}{person.user_id === profile.user_id && <em>Você</em>}</strong><small>{person.email}</small></div>
-              <span className={`access-status ${person.active ? "access-status--active" : "access-status--pending"}`}>{person.active ? <CheckCircle2 size={15} /> : <Clock3 size={15} />}{person.active ? "Ativo" : "Aguardando aprovação"}</span>
-              <select value={person.role} disabled={!isAdmin || busyId === person.user_id} onChange={(event) => changePerson(person, person.active, event.target.value as UserRole)}><option value="agent">Atendente</option><option value="admin">Administrador</option></select>
-              {isAdmin && (person.active ? <button className="button button--ghost" disabled={busyId === person.user_id} onClick={() => changePerson(person, false, person.role)}>{busyId === person.user_id ? <Loader2 className="spin" size={16} /> : <UserX size={16} />} Desativar</button> : <button className="button button--success" disabled={busyId === person.user_id} onClick={() => changePerson(person, true, person.role)}>{busyId === person.user_id ? <Loader2 className="spin" size={16} /> : <UserCheck size={16} />} Aprovar</button>)}
-            </article>
-          ))}
-        </div>
-      </section>
-    </div>
-  );
+  const [busy, setBusy] = useState(""); const [error, setError] = useState(""); async function change(person: Profile, active: boolean, role: UserRole) { setBusy(person.user_id); setError(""); const { error: updateError } = await supabase.rpc("nev_admin_set_profile", { p_user_id: person.user_id, p_active: active, p_role: role }); if (updateError) setError(updateError.message); else onChanged(); setBusy(""); }
+  return <div className="view-stack"><section className="hero-row"><div><span className="eyebrow">ACESSOS E PERMISSÕES</span><h1>Equipe</h1><p>Aprove usuários e defina administradores.</p></div></section><section className="panel team-panel">{error && <div className="form-message form-message--error">{error}</div>}<div className="team-list">{profiles.map((person) => <article className="team-row" key={person.user_id}><span className="avatar">{(person.full_name || person.email)[0].toUpperCase()}</span><div className="team-person"><strong>{person.full_name || "Nome não informado"}{person.user_id === profile.user_id && <em>Você</em>}</strong><small>{person.email}</small></div><Badge tone={person.active ? "green" : "amber"}>{person.active ? "Ativo" : "Aguardando"}</Badge><select value={person.role} disabled={profile.role !== "admin" || busy === person.user_id} onChange={(e) => change(person, person.active, e.target.value as UserRole)}><option value="agent">Atendente</option><option value="admin">Administrador</option></select>{profile.role === "admin" && (person.active ? <button className="button button--ghost" onClick={() => change(person, false, person.role)} disabled={busy === person.user_id}><UserX size={16} /> Desativar</button> : <button className="button button--success" onClick={() => change(person, true, person.role)} disabled={busy === person.user_id}><UserCheck size={16} /> Aprovar</button>)}</article>)}</div></section></div>;
 }
 
-function AppWorkspace({ profile, onSignOut }: { profile: Profile; onSignOut: () => void }) {
-  const [activeTab, setActiveTab] = useState<Tab>("dashboard");
-  const [cases, setCases] = useState<NevCase[]>([]);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [refundPlans, setRefundPlans] = useState<RefundPlan[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState("");
-  const [newCaseOpen, setNewCaseOpen] = useState(false);
-  const [selectedCase, setSelectedCase] = useState<NevCase | null>(null);
-  const [toast, setToast] = useState("");
-
+function Workspace({ profile, onSignOut }: { profile: Profile; onSignOut: () => void }) {
+  const [tab, setTab] = useState<Tab>("dashboard"); const [cases, setCases] = useState<NevCase[]>([]); const [profiles, setProfiles] = useState<Profile[]>([]); const [customers, setCustomers] = useState<NevCustomer[]>([]); const [refunds, setRefunds] = useState<RefundPlan[]>([]); const [tasks, setTasks] = useState<NevTask[]>([]); const [audits, setAudits] = useState<AuditEvent[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(""); const [newCase, setNewCase] = useState(false); const [newTask, setNewTask] = useState(false); const [selectedCase, setSelectedCase] = useState<NevCase | null>(null); const [selectedTask, setSelectedTask] = useState<NevTask | null>(null); const [payment, setPayment] = useState<RefundInstallment | null>(null); const [toast, setToast] = useState("");
   const loadAll = useCallback(async () => {
-    const [caseResult, profileResult, refundResult] = await Promise.all([
-      supabase.from("nev_cases").select("*").order("created_at", { ascending: false }),
-      supabase.from("nev_profiles").select("*").order("created_at", { ascending: true }),
-      supabase.from("nev_refund_plans").select("*, nev_cases(id, case_number, customer_name, whatsapp), nev_refund_installments(*)").order("created_at", { ascending: false }),
-    ]);
-    const error = caseResult.error || profileResult.error || refundResult.error;
-    if (error) setLoadError(error.message);
-    else {
-      setLoadError("");
-      setCases((caseResult.data || []) as NevCase[]);
-      setProfiles((profileResult.data || []) as Profile[]);
-      setRefundPlans((refundResult.data || []) as unknown as RefundPlan[]);
-    }
+    const requests = [supabase.from("nev_cases").select("*").order("last_activity_at", { ascending: false }), supabase.from("nev_profiles").select("*").order("created_at"), supabase.from("nev_customers").select("*").order("created_at", { ascending: false }), supabase.from("nev_refund_plans").select("*, nev_cases(id,case_number,customer_name,whatsapp), nev_refund_installments(*)").order("created_at", { ascending: false }), supabase.from("nev_tasks").select("*").order("updated_at", { ascending: false })];
+    const [caseR, profileR, customerR, refundR, taskR] = await Promise.all(requests); const firstError = caseR.error || profileR.error || customerR.error || refundR.error || taskR.error;
+    if (firstError) setError(firstError.message); else { setError(""); setCases((caseR.data || []) as NevCase[]); setProfiles((profileR.data || []) as Profile[]); setCustomers((customerR.data || []) as NevCustomer[]); setRefunds((refundR.data || []) as unknown as RefundPlan[]); setTasks((taskR.data || []) as NevTask[]); }
+    if (profile.is_super_admin) { const { data } = await supabase.from("nev_audit_events").select("*").order("created_at", { ascending: false }).limit(500); setAudits((data || []) as AuditEvent[]); }
     setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => void loadAll(), 0);
-    return () => window.clearTimeout(timer);
-  }, [loadAll]);
-  useEffect(() => {
-    if (!toast) return;
-    const timer = window.setTimeout(() => setToast(""), 3200);
-    return () => window.clearTimeout(timer);
-  }, [toast]);
-
-  function changed(message?: string) {
-    void loadAll();
-    if (message) setToast(message);
-  }
-
-  const currentCases = useMemo(() => cases, [cases]);
-  const activeCount = cases.filter((item) => !["resolved", "cancelled"].includes(item.status)).length;
-  const pendingTeam = profiles.filter((person) => !person.active).length;
-
-  return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <Brand inverse />
-        <nav className="sidebar__nav">
-          <span className="nav-label">MENU</span>
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            return <button key={item.id} className={activeTab === item.id ? "is-active" : ""} onClick={() => setActiveTab(item.id)}><Icon size={19} /><span>{item.label}</span>{item.id === "cases" && activeCount > 0 && <b>{activeCount}</b>}{item.id === "team" && pendingTeam > 0 && <b className="nav-alert">{pendingTeam}</b>}</button>;
-          })}
-        </nav>
-        <div className="sidebar__footer">
-          <div className="sidebar-user"><span>{(profile.full_name || profile.email).slice(0, 1).toUpperCase()}</span><div><strong>{profile.full_name || "Atendente"}</strong><small>{profile.role === "admin" ? "Administrador" : "Atendente"}</small></div></div>
-          <button className="sidebar-signout" onClick={onSignOut} aria-label="Sair"><LogOut size={18} /></button>
-        </div>
-      </aside>
-
-      <main className="workspace">
-        <header className="topbar">
-          <div className="topbar-mobile-brand"><Brand /></div>
-          <div className="topbar__date"><CalendarDays size={17} /> {new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })}</div>
-          <div className="topbar__actions"><button className="icon-button" onClick={() => { setLoading(true); void loadAll(); }} aria-label="Atualizar"><RefreshCw size={18} className={loading ? "spin" : ""} /></button><button className="topbar-user" onClick={() => setActiveTab("team")}><span>{(profile.full_name || profile.email).slice(0, 1).toUpperCase()}</span><div><strong>{profile.full_name?.split(" ")[0] || "Atendente"}</strong><small>{profile.role === "admin" ? "Admin" : "Equipe"}</small></div></button></div>
-        </header>
-        <div className="workspace__content">
-          {loadError && <div className="form-message form-message--error load-error">Não foi possível carregar os dados: {loadError} <button onClick={() => void loadAll()}>Tentar novamente</button></div>}
-          {loading && cases.length === 0 ? <div className="content-loader"><Loader2 className="spin" size={24} /> Preparando seu painel...</div> : (
-            <>
-              {activeTab === "dashboard" && <DashboardView cases={currentCases} refundPlans={refundPlans} onOpenCase={setSelectedCase} onNewCase={() => setNewCaseOpen(true)} onNavigate={setActiveTab} />}
-              {activeTab === "cases" && <CasesView cases={currentCases} onOpenCase={setSelectedCase} onNewCase={() => setNewCaseOpen(true)} />}
-              {activeTab === "refunds" && <RefundsView plans={refundPlans} onChanged={() => changed("Pagamento atualizado.")} />}
-              {activeTab === "team" && <TeamView profile={profile} profiles={profiles} onChanged={() => changed("Acesso da equipe atualizado.")} />}
-            </>
-          )}
-        </div>
-      </main>
-
-      <nav className="mobile-nav">
-        {navItems.map((item) => { const Icon = item.icon; return <button key={item.id} className={activeTab === item.id ? "is-active" : ""} onClick={() => setActiveTab(item.id)}><Icon size={20} /><span>{item.label === "Visão geral" ? "Início" : item.label}</span>{item.id === "team" && pendingTeam > 0 && <i>{pendingTeam}</i>}</button>; })}
-      </nav>
-
-      {newCaseOpen && <NewCaseModal profile={profile} onClose={() => setNewCaseOpen(false)} onCreated={() => { setNewCaseOpen(false); changed("Atendimento criado com sucesso."); }} />}
-      {selectedCase && <CaseDetailsModal item={selectedCase} profile={profile} profiles={profiles} onClose={() => setSelectedCase(null)} onChanged={() => changed("Atendimento atualizado.")} />}
-      {toast && <div className="toast"><CheckCircle2 size={18} /> {toast}</div>}
-    </div>
-  );
+  }, [profile.is_super_admin]);
+  useEffect(() => { const timer = window.setTimeout(() => { void supabase.rpc("nev_log_access", { p_action: "login" }); void loadAll(); }, 0); const channel = supabase.channel(`nev-live-${profile.user_id}`).on("postgres_changes", { event: "*", schema: "public", table: "nev_cases" }, () => void loadAll()).on("postgres_changes", { event: "*", schema: "public", table: "nev_tasks" }, () => void loadAll()).on("postgres_changes", { event: "*", schema: "public", table: "nev_case_updates" }, () => void loadAll()).on("postgres_changes", { event: "*", schema: "public", table: "nev_refund_installments" }, () => void loadAll()).subscribe(); return () => { window.clearTimeout(timer); void supabase.removeChannel(channel); }; }, [loadAll, profile.user_id]);
+  useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(""), 3200); return () => clearTimeout(timer); }, [toast]);
+  function changed(message = "Atualizado com sucesso.") { setSelectedCase(null); setSelectedTask(null); setPayment(null); void loadAll(); setToast(message); }
+  const now = new Date().toISOString(); const actionCases = cases.filter((c) => c.current_action_user === profile.user_id && !["resolved", "cancelled"].includes(c.status)).length; const actionTasks = tasks.filter((t) => t.waiting_on === profile.user_id && t.status !== "done" && (!t.snoozed_until || t.snoozed_until <= now)).length; const myAction = actionCases + actionTasks;
+  const nav = [{ id: "dashboard" as Tab, label: "Visão geral", icon: LayoutDashboard }, { id: "action" as Tab, label: "Aguardando sua ação", icon: BellRing }, { id: "cases" as Tab, label: "Atendimentos", icon: Headphones }, { id: "tasks" as Tab, label: "Tarefas", icon: ClipboardCheck }, { id: "refunds" as Tab, label: "Reembolsos", icon: HandCoins }, ...(profile.is_super_admin ? [{ id: "audit" as Tab, label: "Histórico", icon: History }] : []), { id: "team" as Tab, label: "Equipe", icon: UsersRound }];
+  return <div className="app-shell"><aside className="sidebar"><Brand inverse /><nav className="sidebar__nav"><span className="nav-label">MENU</span>{nav.map((item) => { const Icon = item.icon; return <button key={item.id} className={tab === item.id ? "is-active" : ""} onClick={() => setTab(item.id)}><Icon size={19} /><span>{item.label}</span>{item.id === "action" && myAction > 0 && <b className="nav-alert">{myAction}</b>}</button>; })}</nav><div className="sidebar__footer"><div className="sidebar-user"><span>{(profile.full_name || profile.email)[0].toUpperCase()}</span><div><strong>{profile.full_name || "Atendente"}</strong><small>{profile.is_super_admin ? "Administrador geral" : profile.role === "admin" ? "Administrador" : "Atendente"}</small></div></div><button className="sidebar-signout" onClick={onSignOut}><LogOut size={18} /></button></div></aside>
+    <main className="workspace"><header className="topbar"><div className="topbar-mobile-brand"><Brand /></div><div className="topbar__date"><CalendarDays size={17} /> {new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })}</div><div className="topbar__actions"><button className="icon-button notification-button" onClick={() => setTab("action")}><BellRing size={18} />{myAction > 0 && <i>{myAction}</i>}</button><button className="icon-button" onClick={() => { setLoading(true); void loadAll(); }}><RefreshCw size={18} className={loading ? "spin" : ""} /></button></div></header><div className="workspace__content">{error && <div className="form-message form-message--error">{error}</div>}{loading && !cases.length ? <div className="content-loader"><Loader2 className="spin" size={24} /> Preparando painel...</div> : <>{tab === "dashboard" && <DashboardView cases={cases} tasks={tasks} refunds={refunds} myAction={myAction} onTab={setTab} onNewCase={() => setNewCase(true)} />}{tab === "action" && <ActionView cases={cases} tasks={tasks} profile={profile} onCase={setSelectedCase} onTask={setSelectedTask} />}{tab === "cases" && <CasesView cases={cases} onOpen={setSelectedCase} onNew={() => setNewCase(true)} />}{tab === "tasks" && <TasksView tasks={tasks} profiles={profiles} onOpen={setSelectedTask} onNew={() => setNewTask(true)} />}{tab === "refunds" && <RefundsView plans={refunds} onPay={setPayment} />}{tab === "audit" && profile.is_super_admin && <AuditView events={audits} profiles={profiles} />}{tab === "team" && <TeamView profile={profile} profiles={profiles} onChanged={() => changed("Equipe atualizada.")} />}</>}</div></main>
+    <nav className="mobile-nav">{nav.filter((item) => ["dashboard", "action", "cases", "tasks", "refunds"].includes(item.id)).map((item) => { const Icon = item.icon; return <button key={item.id} className={tab === item.id ? "is-active" : ""} onClick={() => setTab(item.id)}><Icon size={20} /><span>{item.id === "dashboard" ? "Início" : item.id === "action" ? "Minha ação" : item.label}</span>{item.id === "action" && myAction > 0 && <i>{myAction}</i>}</button>; })}</nav>
+    {newCase && <NewCaseModal profile={profile} profiles={profiles} customers={customers} onClose={() => setNewCase(false)} onCreated={() => { setNewCase(false); changed("Atendimento criado e enviado."); }} />}{newTask && <NewTaskModal profile={profile} profiles={profiles} onClose={() => setNewTask(false)} onCreated={() => { setNewTask(false); changed("Tarefa enviada."); }} />}{selectedCase && <CaseDetailsModal item={selectedCase} profile={profile} profiles={profiles} onClose={() => setSelectedCase(null)} onChanged={() => changed("Atendimento atualizado.")} />}{selectedTask && <TaskDetailsModal task={selectedTask} profile={profile} profiles={profiles} onClose={() => setSelectedTask(null)} onChanged={() => changed("Tarefa atualizada.")} />}{payment && <PaymentModal entry={payment} onClose={() => setPayment(null)} onPaid={() => changed("Pagamento registrado.")} />}{toast && <div className="toast"><CheckCircle2 size={18} /> {toast}</div>}
+  </div>;
 }
 
 function AuthenticatedRoot({ session }: { session: Session }) {
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [needsBootstrap, setNeedsBootstrap] = useState(false);
-  const [error, setError] = useState("");
-
-  const loadAccess = useCallback(async () => {
-    const { error: claimError } = await supabase.rpc("nev_claim_access");
-    if (claimError?.message.includes("Chave inicial")) {
-      setNeedsBootstrap(true);
-      setLoading(false);
-      return;
-    }
-    if (claimError) {
-      setError(claimError.message);
-      setLoading(false);
-      return;
-    }
-    const { data, error: profileError } = await supabase.from("nev_profiles").select("*").eq("user_id", session.user.id).single();
-    if (profileError) setError(profileError.message);
-    else { setError(""); setProfile(data as Profile); setNeedsBootstrap(false); }
-    setLoading(false);
-  }, [session.user.id]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => void loadAccess(), 0);
-    return () => window.clearTimeout(timer);
-  }, [loadAccess]);
-
-  async function signOut() { await supabase.auth.signOut(); }
-
-  if (loading) return <CenteredLoader label="Verificando seu acesso..." />;
-  if (error) return <main className="centered-screen setup-screen"><Brand /><section className="setup-card"><span className="setup-card__icon setup-card__icon--red"><AlertTriangle size={24} /></span><h1>Não foi possível entrar</h1><p>{error}</p><button className="button button--primary button--full" onClick={() => { setLoading(true); void loadAccess(); }}><RefreshCw size={17} /> Tentar novamente</button><button className="text-button" onClick={signOut}>Sair</button></section></main>;
-  if (needsBootstrap) return (
-    <AccessSetup
-      userId={session.user.id}
-      onReady={(newProfile) => {
-        setProfile(newProfile);
-        setNeedsBootstrap(false);
-      }}
-      onSignOut={signOut}
-    />
-  );
-  if (!profile) return <CenteredLoader />;
-  if (!profile.active) return <PendingAccess profile={profile} onReload={() => { setLoading(true); void loadAccess(); }} onSignOut={signOut} />;
-  return <AppWorkspace profile={profile} onSignOut={signOut} />;
+  const [profile, setProfile] = useState<Profile | null>(null); const [loading, setLoading] = useState(true); const [bootstrap, setBootstrap] = useState(false); const [error, setError] = useState("");
+  const load = useCallback(async () => { setLoading(true); const { error: claimError } = await supabase.rpc("nev_claim_access"); if (claimError?.message.includes("Chave inicial")) { setBootstrap(true); setLoading(false); return; } if (claimError) { setError(claimError.message); setLoading(false); return; } const { data, error: profileError } = await supabase.from("nev_profiles").select("*").eq("user_id", session.user.id).single(); if (profileError) setError(profileError.message); else { setProfile(data as Profile); setError(""); setBootstrap(false); } setLoading(false); }, [session.user.id]);
+  useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer); }, [load]); async function signOut() { await supabase.auth.signOut(); }
+  if (loading) return <CenteredLoader label="Verificando acesso..." />; if (error) return <main className="centered-screen"><Brand /><div className="form-message form-message--error">{error}</div><button className="button button--primary" onClick={load}>Tentar novamente</button></main>; if (bootstrap) return <AccessState bootstrap onReload={load} onSignOut={signOut} />; if (!profile) return <CenteredLoader />; if (!profile.active) return <AccessState profile={profile} onReload={load} onSignOut={signOut} />; return <Workspace profile={profile} onSignOut={signOut} />;
 }
 
 export default function Home() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    void supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setLoading(false);
-    });
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession);
-      setLoading(false);
-    });
-    return () => data.subscription.unsubscribe();
-  }, []);
-
-  if (loading) return <CenteredLoader />;
-  if (!session) return <AuthScreen />;
-  return <AuthenticatedRoot session={session} />;
+  const [session, setSession] = useState<Session | null>(null); const [loading, setLoading] = useState(true);
+  useEffect(() => { void supabase.auth.getSession().then(({ data }) => { setSession(data.session); setLoading(false); }); const { data } = supabase.auth.onAuthStateChange((_event, next) => { setSession(next); setLoading(false); }); return () => data.subscription.unsubscribe(); }, []);
+  if (loading) return <CenteredLoader />; return session ? <AuthenticatedRoot session={session} /> : <AuthScreen />;
 }
