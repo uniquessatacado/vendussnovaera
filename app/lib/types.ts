@@ -28,6 +28,25 @@ export type NevCustomer = {
   created_at: string;
 };
 
+export type OrderSystem = {
+  id: string;
+  label: string;
+  base_url: string | null;
+  sort_order: number;
+  active: boolean;
+};
+
+export type CaseOrder = {
+  id: string;
+  case_id: string;
+  system_id: string | null;
+  system_label: string;
+  order_number: string;
+  order_date: string;
+  amount: number;
+  created_at: string;
+};
+
 export type NevCase = {
   id: string;
   case_number: number;

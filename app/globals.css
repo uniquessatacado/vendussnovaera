@@ -2486,6 +2486,63 @@ body.modal-open {
 }
 .file-field small { color: var(--muted); font-size: 9px; }
 
+.orders-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid #d7e1dd;
+  border-radius: 15px;
+  padding: 15px;
+  background: #f7faf8;
+}
+.orders-editor__head,
+.orders-summary__head,
+.order-editor-row__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.orders-editor__head h3,
+.orders-summary__head h3 { margin: 3px 0 0; color: var(--ink); font-size: 14px; }
+.order-editor-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 13px;
+  background: white;
+}
+.order-editor-row__title { grid-column: 1 / -1; }
+.order-editor-row__title strong { color: var(--ink); font-size: 11px; }
+.order-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: 11px;
+  padding: 12px 14px;
+  background: #153d35;
+  color: white;
+}
+.order-total span { font-size: 10px; }
+.order-total strong { font-size: 18px; }
+.orders-summary__head { margin-bottom: 9px; }
+.orders-summary > div:last-child { display: flex; flex-direction: column; }
+.order-summary-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 14px;
+  border-top: 1px solid var(--line-soft);
+  padding: 10px 0;
+}
+.order-summary-row > div { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.order-summary-row > div strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.order-summary-row small,
+.order-summary-row > span { color: var(--muted); font-size: 9px; }
+.order-summary-row > strong { color: var(--ink); font-size: 11px; }
+
 .details-layout--workflow {
   grid-template-columns: minmax(0, 1fr) 310px;
 }
@@ -2657,4 +2714,11 @@ body.modal-open {
   .refund-row { grid-template-columns: 44px minmax(0,1fr); grid-template-areas: "date customer" "date amount" "action action"; }
   .refund-row .refund-amount { justify-self: start; }
   .modal { overscroll-behavior: contain; }
+  .orders-editor__head { align-items: stretch; flex-direction: column; }
+  .orders-editor__head .button { width: 100%; }
+  .order-editor-row { grid-template-columns: 1fr; }
+  .order-editor-row__title { grid-column: auto; }
+  .order-summary-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .order-summary-row > span { grid-column: 1; }
+  .order-summary-row > strong { grid-column: 2; grid-row: 1 / span 2; }
 }

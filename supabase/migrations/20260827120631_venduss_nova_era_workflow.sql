@@ -249,7 +249,7 @@ set search_path = ''
 as $$
 declare
   v_customer_id uuid;
-  v_phone text := regexp_replace(coalesce(p_whatsapp, ''), '\\D', '', 'g');
+  v_phone text := regexp_replace(coalesce(p_whatsapp, ''), '[^0-9]', '', 'g');
   v_case public.nev_cases;
 begin
   if not nev_private.nev_is_active_staff() then raise exception 'Acesso não autorizado.'; end if;
